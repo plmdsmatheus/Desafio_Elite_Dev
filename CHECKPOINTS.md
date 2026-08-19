@@ -112,6 +112,36 @@ plano original salvo em `/home/matheus-ubuntu/.claude/plans/giggly-bouncing-kern
   gera ticket; edição de evento por dono (200) vs. outro organizador (404) vs. cliente (403);
   bloqueio de reduzir capacidade abaixo do vendido (400). Tudo passou, banco limpo depois.
 
+## ✅ Checkpoint 5b — Documentação interativa da API (Swagger/OpenAPI)
+
+Não estava no PDF, mas vale a pena tanto pra visualização quanto pra teste manual — decisão do
+usuário, não do enunciado.
+
+- `drf-spectacular` (schema OpenAPI 3) + `drf-spectacular-sidecar` (assets do Swagger UI/ReDoc
+  servidos localmente via staticfiles, sem depender de CDN — combina com a decisão de deploy só
+  local via Docker Compose).
+- Rotas: `GET /api/schema` (JSON/YAML cru), `GET /api/docs` (Swagger UI, interativo — dá pra clicar
+  em "Authorize" e colar o `access` token pra testar endpoints protegidos direto no navegador),
+  `GET /api/redoc` (ReDoc, leitura).
+- Todas as views anotadas com `@extend_schema`/`@extend_schema_view` (tags por domínio: auth,
+  catalog, events, reservations, tickets, gate) — inclusive as `APIView` "opacas" que não tinham
+  `serializer_class` (`ReservationPayView`, `GateValidateView`, `CatalogSearchView`, `MeView`),
+  usando serializers dedicados só pra documentação (`PaymentResultSerializer`,
+  `GateValidateResultSerializer`) que descrevem a resposta real sem interferir na lógica.
+- Os `TextChoices` de status/papel (que eram classes aninhadas nos models) viraram classes de
+  módulo (`EventStatus`, `ReservationStatus`, `UserRole`, etc.) com um alias na classe do model
+  (`Event.Status = EventStatus`) pra manter o código igual em todo lugar — necessário pro
+  `ENUM_NAME_OVERRIDES` do drf-spectacular conseguir importar cada choices e gerar nomes de enum
+  legíveis no schema (sem isso, viravam `Status361Enum` etc. por colisão de nome). Não gerou
+  migration nova (choices não afeta o schema do banco).
+- **Verificado**: `manage.py spectacular --fail-on-warn` gera o schema sem nenhum warning/erro (14
+  paths, 17 operações, todas taggeadas corretamente); JWT Bearer detectado automaticamente como
+  security scheme (`jwtAuth`), sem precisar de extensão custom; assets do Swagger UI confirmados
+  servindo localmente (200, sem CDN); fluxo completo testado via HTTP de verdade contra o
+  `runserver` (não só chamadas em processo) — registro → login → `GET /api/auth/me` com Bearer
+  token → 401 sem token — exatamente o caminho que alguém percorre clicando em "Authorize" no
+  Swagger.
+
 ## ⬜ Checkpoint 6 — Seed de dados de teste
 
 - Management command `seed_demo_data`: 1 organizador, 2 clientes, 1 portaria, ao menos 1 evento

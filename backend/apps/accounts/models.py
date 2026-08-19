@@ -3,6 +3,15 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 
 
+# Nível de módulo (não aninhada na classe) pra o drf-spectacular conseguir
+# importar via ENUM_NAME_OVERRIDES; o alias User.Role abaixo preserva a leitura
+# no resto do código (User.Role.CUSTOMER etc).
+class UserRole(models.TextChoices):
+    ORGANIZER = "organizer", "Organizador"
+    CUSTOMER = "customer", "Cliente"
+    GATE = "gate", "Portaria"
+
+
 class UserManager(BaseUserManager):
     use_in_migrations = True
 
@@ -39,10 +48,7 @@ class User(AbstractUser):
     provisionados via seed/admin, por serem contas operacionais.
     """
 
-    class Role(models.TextChoices):
-        ORGANIZER = "organizer", "Organizador"
-        CUSTOMER = "customer", "Cliente"
-        GATE = "gate", "Portaria"
+    Role = UserRole
 
     username = None
     email = models.EmailField("e-mail", unique=True)

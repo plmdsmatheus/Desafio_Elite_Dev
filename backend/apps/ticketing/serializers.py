@@ -89,13 +89,33 @@ class TicketSerializer(serializers.ModelSerializer):
             "share_url",
         ]
 
-    def get_qr_payload(self, obj):
+    def get_qr_payload(self, obj) -> str:
         return sign_ticket_code(obj.public_code)
 
-    def get_share_url(self, obj):
+    def get_share_url(self, obj) -> str:
         return f"{settings.FRONTEND_BASE_URL}/t/{obj.share_slug}"
 
 
 class GateValidateSerializer(serializers.Serializer):
-    code = serializers.CharField()
-    event_id = serializers.IntegerField()
+    code = serializers.CharField(
+        help_text="Payload assinado do QR ou o public_code digitado manualmente."
+    )
+    event_id = serializers.IntegerField(help_text="Evento selecionado na sessão da portaria.")
+
+
+class PaymentResultSerializer(serializers.Serializer):
+    """Só para documentação — não é usado para montar a resposta de verdade."""
+
+    reservation = ReservationSerializer()
+    payment_status = serializers.ChoiceField(choices=["approved", "declined"])
+    tickets = TicketSerializer(many=True)
+
+
+class GateValidateResultSerializer(serializers.Serializer):
+    """Só para documentação — não é usado para montar a resposta de verdade."""
+
+    result = serializers.ChoiceField(
+        choices=["valido", "invalido", "ja_utilizado", "evento_errado"]
+    )
+    detail = serializers.CharField()
+    ticket = TicketSerializer(required=False)

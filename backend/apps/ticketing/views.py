@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,8 +12,10 @@ from apps.events.serializers import EventSerializer
 
 from .models import Payment, Reservation, Ticket
 from .serializers import (
+    GateValidateResultSerializer,
     GateValidateSerializer,
     PaySerializer,
+    PaymentResultSerializer,
     ReservationCreateSerializer,
     ReservationSerializer,
     TicketSerializer,
@@ -20,6 +23,13 @@ from .serializers import (
 from .signing import unsign_ticket_code
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["reservations"],
+        summary="Reservar ingressos (quantidade)",
+        responses=ReservationSerializer,
+    )
+)
 class ReservationCreateView(generics.CreateAPIView):
     permission_classes = [IsCustomer]
     serializer_class = ReservationCreateSerializer
@@ -40,6 +50,14 @@ class ReservationPayView(APIView):
 
     permission_classes = [IsCustomer]
 
+    @extend_schema(
+        tags=["reservations"],
+        summary="Pagar reserva (simulado)",
+        description="Cartão terminado em '0000' é sempre recusado; qualquer outro número aprova "
+        "(sujeito a ainda haver capacidade disponível no evento, checado sob lock).",
+        request=PaySerializer,
+        responses=PaymentResultSerializer,
+    )
     def post(self, request, pk):
         reservation = get_object_or_404(
             Reservation,
@@ -92,6 +110,7 @@ class ReservationPayView(APIView):
         )
 
 
+@extend_schema_view(get=extend_schema(tags=["tickets"], summary="Meus ingressos"))
 class MyTicketsView(generics.ListAPIView):
     permission_classes = [IsCustomer]
     serializer_class = TicketSerializer
@@ -100,6 +119,11 @@ class MyTicketsView(generics.ListAPIView):
         return Ticket.objects.filter(owner=self.request.user).select_related("event")
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["tickets"], summary="Ver ingresso compartilhado (link público, sem login)"
+    )
+)
 class PublicTicketView(generics.RetrieveAPIView):
     """Link compartilhável — o UUID do share_slug já é a proteção, sem exigir login."""
 
@@ -110,6 +134,9 @@ class PublicTicketView(generics.RetrieveAPIView):
     queryset = Ticket.objects.select_related("event")
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["gate"], summary="Eventos publicados (sessões para validação)")
+)
 class GateEventListView(generics.ListAPIView):
     """Eventos publicados, pra portaria escolher a sessão de validação."""
 
@@ -127,6 +154,13 @@ class GateValidateView(APIView):
 
     permission_classes = [IsGate]
 
+    @extend_schema(
+        tags=["gate"],
+        summary="Validar ingresso na portaria",
+        description="Aceita tanto o payload assinado do QR quanto o public_code digitado à mão.",
+        request=GateValidateSerializer,
+        responses=GateValidateResultSerializer,
+    )
     def post(self, request):
         serializer = GateValidateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

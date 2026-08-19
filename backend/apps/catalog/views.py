@@ -1,4 +1,5 @@
 import requests
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -17,6 +18,22 @@ class CatalogSearchView(APIView):
 
     permission_classes = [IsOrganizer]
 
+    @extend_schema(
+        tags=["catalog"],
+        parameters=[
+            OpenApiParameter(
+                "provider",
+                str,
+                enum=["ticketmaster", "tmdb"],
+                required=True,
+                description="Qual catálogo externo consultar.",
+            ),
+            OpenApiParameter(
+                "q", str, required=True, description="Termo de busca (nome do show/artista/filme)."
+            ),
+        ],
+        responses=CatalogItemSerializer(many=True),
+    )
     def get(self, request):
         provider_key = request.query_params.get("provider", "")
         query = request.query_params.get("q", "").strip()

@@ -1,5 +1,6 @@
 from django.db.models import Q
 from django.utils.dateparse import parse_date
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 
@@ -9,6 +10,21 @@ from .models import Event
 from .serializers import EventSerializer, EventWriteSerializer
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["events"],
+        summary="Buscar eventos publicados",
+        parameters=[
+            OpenApiParameter("q", str, required=False, description="Busca em título/local."),
+            OpenApiParameter("city", str, required=False, description="Filtra por cidade."),
+            OpenApiParameter(
+                "category", str, required=False, enum=["show", "movie"], description="Filtra por categoria."
+            ),
+            OpenApiParameter("date", str, required=False, description="Filtra por data (YYYY-MM-DD)."),
+        ],
+    ),
+    post=extend_schema(tags=["events"], summary="Criar evento (organizador)"),
+)
 class EventListCreateView(generics.ListCreateAPIView):
     """GET público (busca/filtro nos eventos publicados) + POST do organizador."""
 
@@ -57,6 +73,11 @@ class EventListCreateView(generics.ListCreateAPIView):
         return Response(output.data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["events"], summary="Detalhe do evento"),
+    put=extend_schema(tags=["events"], summary="Substituir evento (organizador dono)"),
+    patch=extend_schema(tags=["events"], summary="Editar evento (organizador dono)"),
+)
 class EventDetailView(generics.RetrieveUpdateAPIView):
     """GET público (evento publicado, ou rascunho se for o próprio organizador) +
     PATCH/PUT restrito ao organizador dono."""
@@ -90,6 +111,9 @@ class EventDetailView(generics.RetrieveUpdateAPIView):
         return Response(EventSerializer(serializer.instance).data)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["events"], summary="Meus eventos (organizador, todos os status)")
+)
 class OrganizerEventListView(generics.ListAPIView):
     """Lista própria do organizador (todos os status, com sold/capacity)."""
 

@@ -31,6 +31,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
+    "drf_spectacular_sidecar",
     "corsheaders",
     "apps.accounts",
     "apps.catalog",
@@ -136,6 +138,36 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Plataforma de Eventos e Ingressos — API",
+    "DESCRIPTION": (
+        "Organizador publica eventos a partir de um catálogo externo (Ticketmaster/TMDb), "
+        "cliente reserva/paga (simulado)/recebe ingresso com QR, portaria valida na entrada.\n\n"
+        "Autenticação: `POST /api/auth/login` devolve um par de tokens JWT. Clique em "
+        "**Authorize** e cole `Bearer <access_token>` pra testar os endpoints protegidos."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Serve os assets do Swagger UI/ReDoc localmente (staticfiles), sem depender de CDN.
+    "SWAGGER_UI_DIST": "SIDECAR",
+    "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
+    "REDOC_DIST": "SIDECAR",
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "COMPONENT_SPLIT_REQUEST": True,
+    # Vários models têm um campo "status" com choices próprios — sem isso o
+    # gerador dá nomes genéricos tipo "Status361Enum" pros componentes do schema.
+    "ENUM_NAME_OVERRIDES": {
+        "UserRoleEnum": "apps.accounts.models.UserRole.choices",
+        "EventCategoryEnum": "apps.events.models.EventCategory.choices",
+        "EventSourceProviderEnum": "apps.events.models.EventSourceProvider.choices",
+        "EventStatusEnum": "apps.events.models.EventStatus.choices",
+        "ReservationStatusEnum": "apps.ticketing.models.ReservationStatus.choices",
+        "PaymentStatusEnum": "apps.ticketing.models.PaymentStatus.choices",
+        "TicketStatusEnum": "apps.ticketing.models.TicketStatus.choices",
+    },
 }
 
 SIMPLE_JWT = {

@@ -14,12 +14,29 @@ def generate_public_code():
     return "".join(secrets.choice(_PUBLIC_CODE_ALPHABET) for _ in range(10))
 
 
+# Nível de módulo (não aninhadas na classe) pra o drf-spectacular conseguir
+# importar cada choices via ENUM_NAME_OVERRIDES; os aliases <Model>.Status
+# abaixo preservam a leitura no resto do código (Reservation.Status.PAID etc).
+class ReservationStatus(models.TextChoices):
+    PENDING = "pending", "Pendente"
+    PAID = "paid", "Pago"
+    DECLINED = "declined", "Recusado"
+    CANCELED = "canceled", "Cancelado"
+
+
+class PaymentStatus(models.TextChoices):
+    APPROVED = "approved", "Aprovado"
+    DECLINED = "declined", "Recusado"
+
+
+class TicketStatus(models.TextChoices):
+    VALID = "valid", "Válido"
+    USED = "used", "Utilizado"
+    CANCELED = "canceled", "Cancelado"
+
+
 class Reservation(models.Model):
-    class Status(models.TextChoices):
-        PENDING = "pending", "Pendente"
-        PAID = "paid", "Pago"
-        DECLINED = "declined", "Recusado"
-        CANCELED = "canceled", "Cancelado"
+    Status = ReservationStatus
 
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="reservations")
     customer = models.ForeignKey(
@@ -43,9 +60,7 @@ class Reservation(models.Model):
 
 
 class Payment(models.Model):
-    class Status(models.TextChoices):
-        APPROVED = "approved", "Aprovado"
-        DECLINED = "declined", "Recusado"
+    Status = PaymentStatus
 
     reservation = models.OneToOneField(
         Reservation, on_delete=models.CASCADE, related_name="payment"
@@ -61,10 +76,7 @@ class Payment(models.Model):
 
 
 class Ticket(models.Model):
-    class Status(models.TextChoices):
-        VALID = "valid", "Válido"
-        USED = "used", "Utilizado"
-        CANCELED = "canceled", "Cancelado"
+    Status = TicketStatus
 
     reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name="tickets")
     # Denormalizado a partir de reservation.event de propósito: a portaria consulta por
