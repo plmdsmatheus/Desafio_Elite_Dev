@@ -142,16 +142,59 @@ usuário, não do enunciado.
   token → 401 sem token — exatamente o caminho que alguém percorre clicando em "Authorize" no
   Swagger.
 
-## ⬜ Checkpoint 6 — Seed de dados de teste
+## ✅ Checkpoint 6 — Seed de dados de teste
 
-- Management command `seed_demo_data`: 1 organizador, 2 clientes, 1 portaria, ao menos 1 evento
-  publicado com ingressos disponíveis. Depois disso, tirar o override do `command` no
-  `docker-compose.yml`.
+- `apps/accounts/management/commands/seed_demo_data.py` — **idempotente** (usa
+  `get_or_create`/`update_or_create`, roda em todo `docker compose up` sem duplicar nada):
+  - 1 organizador, 2 clientes, 1 portaria — todos com senha `demo1234`.
+  - 4 eventos do organizador: 3 publicados variados de propósito — um "ticketmaster" (show,
+    capacidade 100), um "tmdb" (filme, capacidade 60), um "manual" com capacidade **5** (fácil de
+    esgotar, bom pra reproduzir a trava de concorrência manualmente) — e 1 **rascunho** (não
+    publicado), pra evidenciar a diferença entre `GET /api/organizer/events` (organizador vê tudo)
+    e `GET /api/events/` (público, só publicado).
+  - 2 ingressos pagos pro cliente 1 no evento principal: **1 já sai validado** (`used`, pra testar
+    o estado "já utilizado" sem precisar validar nada manualmente antes) e **1 ainda válido** (pra
+    testar a validação de verdade na portaria). O comando imprime os `public_code` dos dois no
+    final, pra digitação manual rápida.
+  - Removido o override do `command` no `docker-compose.yml` — agora usa o `CMD` do `Dockerfile`
+    (`migrate && seed_demo_data && runserver`).
+- **Verificado**: rodado 2x seguidas contra o Postgres real — segunda execução não duplicou nada
+  (4 usuários, 4 eventos, 1 reserva, 2 tickets, mesmos IDs/códigos nas duas vezes); as 4 senhas
+  semeadas autenticam de verdade (`django.contrib.auth.authenticate`) com o papel certo.
 
-## ⬜ Checkpoint 7 — Testes de backend
+## ✅ Checkpoint 7 — Testes de backend
 
-- `pytest-django`: reserva concorrente não estoura capacidade, assinatura do QR rejeita payload
-  adulterado, ticket não valida duas vezes, pagamento aprova/recusa conforme regra.
+- **52 testes, 91% de cobertura em `apps/`** (`pytest --cov=apps --cov-report=term-missing`).
+  Formaliza em suíte permanente tudo que eu vinha validando manualmente via `manage.py shell` nos
+  checkpoints anteriores.
+- `conftest.py` na raiz do backend com fixtures compartilhadas (`api_client`, `organizer`,
+  `customer`, `gate_user`, `published_event`, etc).
+- `apps/accounts/tests.py`: registro sempre cria cliente (mesmo se o payload tentar mandar
+  `role`), login devolve tokens + dados do usuário, **fluxo real via header `Authorization: Bearer`**
+  (não só `force_authenticate`) reproduzindo o que o Swagger UI faz.
+- `apps/events/tests.py`: listagem pública só mostra publicados, busca por texto, organizador cria
+  /edita o próprio evento, outro organizador leva 404, cliente leva 403, capacidade não pode cair
+  abaixo do vendido.
+- `apps/catalog/tests.py`: parsing dos dois providers com payloads sintéticos (sem rede), registry
+  de providers, e a view com `unittest.mock.patch` no `TMDbProvider.search` (sem chamar API de
+  verdade — determinístico, roda em qualquer máquina/CI sem chave configurada).
+- `apps/ticketing/tests/` (virou pacote, não um arquivo só — volume grande de casos):
+  - `test_signing.py`: roundtrip, assinatura adulterada, entrada aleatória não explode.
+  - `test_reservations.py`: soft-check na criação, cartão `...0000` recusa sem gerar ticket, cartão
+    normal aprova e gera os tickets certos, não dá pra pagar reserva de outro cliente nem pagar a
+    mesma reserva duas vezes.
+  - `test_gate.py`: os 4 estados (`valido`/`invalido`/`ja_utilizado`/`evento_errado`), QR
+    adulterado, assinatura válida mas pra um código inexistente (não pode passar só por ter boa
+    assinatura), digitação manual do `public_code` sem assinatura, cliente não pode validar.
+  - `test_concurrency.py` — **a parte que mais importa**: usa `@pytest.mark.django_db(transaction=True)`
+    + threads reais (não simuladas) com conexões de banco de fato separadas, formalizando os testes
+    de concorrência que eu tinha rodado manualmente: 2 pagamentos simultâneos disputando a última
+    vaga (só 1 ganha), 10 pagamentos simultâneos disputando 3 vagas (exatamente 3 ganham), 2
+    validações simultâneas do mesmo ingresso na portaria (só 1 dá `valido`, a outra `ja_utilizado`).
+    Rodei 3x seguidas pra garantir que não é flaky — estável nas 3.
+- `seed_demo_data.py` ficou sem teste automatizado (0% cobertura) — é script de dados, baixo risco,
+  e já validei manualmente no Checkpoint 6 (rodei 2x, conferi idempotência e autenticação);
+  decisão consciente de não testar, não esquecimento.
 
 ## ⬜ Checkpoint 8 — Scaffold do frontend
 

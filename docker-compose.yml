@@ -27,7 +27,7 @@ services:
       # Dentro da rede do Compose o Postgres é acessado pelo nome do serviço,
       # não por "localhost" — sobrescreve o valor do .env só para essa variável.
       DATABASE_URL: postgres://postgres:postgres@db:5432/eventos_db
-    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    # Sem override de "command" — usa o CMD do Dockerfile (migrate + seed_demo_data + runserver).
     volumes:
       - ./backend:/app
     ports:
