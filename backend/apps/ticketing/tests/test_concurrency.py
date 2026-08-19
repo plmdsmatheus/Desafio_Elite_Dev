@@ -1,6 +1,6 @@
-"""Testes com threads reais + conexões de DB reais (transaction=True), pra provar que
-as travas de concorrência (select_for_update) seguram sob concorrência de verdade —
-não só "no papel". Mais lentos que o resto da suíte, de propósito."""
+"""Tests with real threads and real DB connections (transaction=True), to prove
+the concurrency locks (select_for_update) hold under actual concurrency, not
+just in theory. Slower than the rest of the suite, deliberately."""
 
 import threading
 from decimal import Decimal
@@ -50,8 +50,8 @@ class TestPaymentConcurrency:
                     format="json",
                 )
             finally:
-                # cada thread abre sua própria conexão de DB; sem isso ela fica
-                # pendurada e o pytest-django não consegue derrubar o banco de teste.
+                # Each thread opens its own DB connection; without this it's left
+                # dangling and pytest-django can't tear down the test database.
                 connections.close_all()
 
         t1 = threading.Thread(target=pay, args=(client1, r1.id, "c1"))
@@ -66,8 +66,49 @@ class TestPaymentConcurrency:
         assert Ticket.objects.filter(event=event).count() == 1
         assert Reservation.objects.filter(event=event, status=Reservation.Status.PAID).count() == 1
 
+    def test_two_simultaneous_pay_requests_for_the_same_reservation_only_one_succeeds(self):
+        """Double click / network retry on the same payment — must not create 2
+        Payments for 1 Reservation (unique constraint) or blow up with a 500."""
+        organizer = User.objects.create_user(email="org4@test.com", password="x", role=User.Role.ORGANIZER)
+        customer = User.objects.create_user(email="c4@test.com", password="x", role=User.Role.CUSTOMER)
+
+        event = Event.objects.create(
+            organizer=organizer, title="Pagamento Duplo", category=Event.Category.SHOW,
+            venue_name="V", city="SP", date_time=timezone.now(), capacity=5,
+            price=Decimal("50"), status=Event.Status.PUBLISHED,
+        )
+        reservation = Reservation.objects.create(
+            event=event, customer=customer, quantity=1, total_price=Decimal("50"),
+        )
+
+        results = {}
+
+        def pay(key):
+            try:
+                client = APIClient()
+                client.force_authenticate(user=customer)
+                results[key] = client.post(
+                    f"/api/reservations/{reservation.id}/pay",
+                    {"card_number": "4111111111111111"},
+                    format="json",
+                )
+            finally:
+                connections.close_all()
+
+        t1 = threading.Thread(target=pay, args=("a",))
+        t2 = threading.Thread(target=pay, args=("b",))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        status_codes = sorted(r.status_code for r in results.values())
+        assert status_codes == [200, 409], status_codes
+        assert Reservation.objects.filter(id=reservation.id, status=Reservation.Status.PAID).count() == 1
+        assert Ticket.objects.filter(reservation=reservation).count() == 1
+
     def test_ten_simultaneous_payments_for_three_seats_exactly_three_win(self):
-        """Mesma garantia, com mais concorrência (10 threads disputando 3 vagas)."""
+        """Same guarantee, with more concurrency (10 threads competing for 3 seats)."""
         organizer = User.objects.create_user(email="org2@test.com", password="x", role=User.Role.ORGANIZER)
         event = Event.objects.create(
             organizer=organizer, title="Poucas Vagas", category=Event.Category.SHOW,

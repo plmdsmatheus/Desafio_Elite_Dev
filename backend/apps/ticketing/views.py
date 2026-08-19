@@ -44,9 +44,10 @@ class ReservationCreateView(generics.CreateAPIView):
 
 
 class ReservationPayView(APIView):
-    """Simula o pagamento. A checagem final de capacidade acontece AQUI — não na
-    criação da reserva — dentro de uma transação com lock no Event. É esse lock
-    que garante que o mesmo lugar não seja vendido duas vezes sob concorrência."""
+    """Simulates the payment. The final capacity check happens HERE — not when
+    the reservation is created — inside a transaction that locks the Event.
+    That lock is what guarantees the same seat isn't sold twice under
+    concurrency."""
 
     permission_classes = [IsCustomer]
 
@@ -59,22 +60,28 @@ class ReservationPayView(APIView):
         responses=PaymentResultSerializer,
     )
     def post(self, request, pk):
-        reservation = get_object_or_404(
-            Reservation,
-            pk=pk,
-            customer=request.user,
-            status=Reservation.Status.PENDING,
-        )
-
         pay_serializer = PaySerializer(data=request.data)
         pay_serializer.is_valid(raise_exception=True)
         card_number = pay_serializer.validated_data["card_number"]
 
-        # Regra determinística e documentada no README: cartão terminado em
-        # "0000" é sempre recusado, qualquer outro é aprovado.
+        # Deterministic rule, documented in the README: a card ending in "0000"
+        # is always declined, any other number is approved.
         approved = not card_number.endswith("0000")
 
         with transaction.atomic():
+            # Lock the reservation itself: without this, a duplicate POST for the
+            # same payment (double click, network retry) lets both requests pass
+            # the status check, and the second one hits the unique constraint on
+            # Payment.reservation.
+            reservation = get_object_or_404(
+                Reservation.objects.select_for_update(), pk=pk, customer=request.user
+            )
+            if reservation.status != Reservation.Status.PENDING:
+                return Response(
+                    {"detail": "Esta reserva não está mais pendente de pagamento."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
             event = Event.objects.select_for_update().get(pk=reservation.event_id)
 
             if approved and event.tickets_sold + reservation.quantity > event.capacity:
@@ -125,7 +132,7 @@ class MyTicketsView(generics.ListAPIView):
     )
 )
 class PublicTicketView(generics.RetrieveAPIView):
-    """Link compartilhável — o UUID do share_slug já é a proteção, sem exigir login."""
+    """Shareable link — the share_slug UUID is itself the protection, no login required."""
 
     permission_classes = [permissions.AllowAny]
     serializer_class = TicketSerializer
@@ -138,19 +145,19 @@ class PublicTicketView(generics.RetrieveAPIView):
     get=extend_schema(tags=["gate"], summary="Eventos publicados (sessões para validação)")
 )
 class GateEventListView(generics.ListAPIView):
-    """Eventos publicados, pra portaria escolher a sessão de validação."""
+    """Published events, for the gate to pick which validation session it's running."""
 
     permission_classes = [IsGate]
     serializer_class = EventSerializer
 
     def get_queryset(self):
-        return Event.objects.filter(status=Event.Status.PUBLISHED)
+        return Event.objects.with_sold_counts().filter(status=Event.Status.PUBLISHED)
 
 
 class GateValidateView(APIView):
-    """Sempre responde 200 com um `result` entre valido/invalido/ja_utilizado/
-    evento_errado — o front decide o que mostrar sem precisar inspecionar status
-    HTTP além dos erros de validação de entrada (400)."""
+    """Always answers 200 with a `result` among valido/invalido/ja_utilizado/
+    evento_errado — the frontend decides what to show without needing to
+    inspect the HTTP status beyond input validation errors (400)."""
 
     permission_classes = [IsGate]
 
@@ -167,7 +174,7 @@ class GateValidateView(APIView):
         raw_code = serializer.validated_data["code"].strip()
         event_id = serializer.validated_data["event_id"]
 
-        # Aceita tanto o payload assinado do QR quanto o public_code digitado à mão.
+        # Accepts either the signed QR payload or the manually typed public_code.
         public_code = unsign_ticket_code(raw_code) or raw_code
 
         with transaction.atomic():

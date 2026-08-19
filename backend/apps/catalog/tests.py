@@ -9,7 +9,7 @@ from apps.catalog.providers.tmdb import TMDbProvider
 
 
 class TestProviderParsing:
-    """Parsing dos payloads no formato real das APIs — sem rede."""
+    """Parsing of payloads in the real API format — no network calls."""
 
     def test_ticketmaster_maps_full_event(self):
         item = TicketmasterProvider()._to_item(

@@ -10,8 +10,8 @@ from .serializers import EmailTokenObtainPairSerializer, RegisterSerializer, Use
 
 @extend_schema(tags=["auth"])
 class RegisterView(generics.CreateAPIView):
-    """Cadastro público — sempre cria um usuário com papel de cliente.
-    Organizador e portaria são provisionados via seed/admin (contas operacionais)."""
+    """Public signup — always creates a user with the customer role.
+    Organizer and gate accounts are provisioned via seed/admin (operational accounts)."""
 
     queryset = User.objects.all()
     serializer_class = RegisterSerializer

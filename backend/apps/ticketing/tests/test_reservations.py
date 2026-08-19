@@ -114,12 +114,12 @@ class TestReservationPay:
         response = api_client.post(
             f"/api/reservations/{reservation_id}/pay", {"card_number": "4111111111111111"}, format="json"
         )
-        assert response.status_code == 404  # não está mais "pending"
+        assert response.status_code == 409  # no longer "pending"
 
     def test_capacity_is_rechecked_at_payment_time(self, api_client, customer, customer2, published_event):
-        """A reserva em si não trava estoque — só o pagamento aprovado. Isso é
-        verificado aqui de forma sequencial; a versão concorrente de verdade (com
-        threads reais) está em test_concurrency.py."""
+        """The reservation itself doesn't hold stock — only an approved payment
+        does. Checked here sequentially; the real concurrent version (with
+        actual threads) lives in test_concurrency.py."""
         published_event.capacity = 1
         published_event.save()
 

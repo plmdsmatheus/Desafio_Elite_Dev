@@ -1,18 +1,19 @@
 from django.core import signing
 
-# Salt isola esse uso do signing de qualquer outro que a aplicação venha a ter
-# (ex.: reset de senha) — mesmo SECRET_KEY, namespaces diferentes.
+# The salt isolates this signing use from any other the app may add later
+# (e.g. password reset) — same SECRET_KEY, different namespaces.
 SALT = "ticket-qr"
 
 
 def sign_ticket_code(public_code: str) -> str:
-    """Payload que vai no QR. Só o backend, com o SECRET_KEY, consegue gerar um
-    valor que passe na verificação — é isso que torna o QR não forjável."""
+    """Payload that goes in the QR. Only the backend, with SECRET_KEY, can
+    produce a value that passes verification — that's what makes the QR
+    unforgeable."""
     return signing.dumps(public_code, salt=SALT)
 
 
 def unsign_ticket_code(token: str) -> str | None:
-    """Retorna o public_code se a assinatura for válida, senão None (nunca levanta)."""
+    """Returns the public_code if the signature is valid, else None (never raises)."""
     try:
         return signing.loads(token, salt=SALT)
     except signing.BadSignature:

@@ -10,10 +10,10 @@ from .serializers import CatalogItemSerializer
 
 
 class CatalogSearchView(APIView):
-    """Proxy de busca no catálogo externo (Ticketmaster/TMDb).
+    """Search proxy for the external catalog (Ticketmaster/TMDb).
 
-    Só o organizador pode chamar: é aqui que ele escolhe o item que vira a base
-    de um novo evento. A chave da API nunca sai do backend.
+    Organizer-only: this is where they pick the item that seeds a new event.
+    The API key never reaches the client.
     """
 
     permission_classes = [IsOrganizer]

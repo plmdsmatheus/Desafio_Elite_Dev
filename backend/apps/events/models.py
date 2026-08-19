@@ -2,9 +2,9 @@ from django.conf import settings
 from django.db import models
 
 
-# Nível de módulo (em vez de aninhadas na classe) para que o drf-spectacular
-# (ENUM_NAME_OVERRIDES) consiga importar cada choices diretamente; os aliases
-# Event.SourceProvider/Category/Status abaixo preservam a leitura no resto do código.
+# Module level (instead of nested in the class) so drf-spectacular
+# (ENUM_NAME_OVERRIDES) can import each choices directly; the
+# Event.SourceProvider/Category/Status aliases below keep the rest of the code reading naturally.
 class EventSourceProvider(models.TextChoices):
     TICKETMASTER = "ticketmaster", "Ticketmaster"
     TMDB = "tmdb", "TMDb"
@@ -22,10 +22,28 @@ class EventStatus(models.TextChoices):
     CANCELED = "canceled", "Cancelado"
 
 
+class EventQuerySet(models.QuerySet):
+    def with_sold_counts(self):
+        """Annotates _sold_count so tickets_sold/tickets_available don't each run
+        their own query per row — without this, listing N events costs 2N extra
+        SUM queries (Event.tickets_sold below falls back to that per-instance
+        query when the annotation isn't present, e.g. after a plain .get())."""
+        from apps.ticketing.models import ReservationStatus
+
+        return self.annotate(
+            _sold_count=models.Sum(
+                "reservations__quantity",
+                filter=models.Q(reservations__status=ReservationStatus.PAID),
+            )
+        ).order_by("date_time")  # annotate()'s GROUP BY can drop the Meta.ordering default
+
+
 class Event(models.Model):
     SourceProvider = EventSourceProvider
     Category = EventCategory
     Status = EventStatus
+
+    objects = EventQuerySet.as_manager()
 
     organizer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -34,8 +52,8 @@ class Event(models.Model):
         limit_choices_to={"role": "organizer"},
     )
 
-    # Snapshot do item escolhido no catálogo externo — não é uma referência viva:
-    # o organizador edita data/local/capacidade/preço livremente depois de escolher.
+    # Snapshot of the item picked from the external catalog — not a live reference:
+    # the organizer freely edits date/venue/capacity/price after picking it.
     source_provider = models.CharField(
         max_length=20, choices=SourceProvider.choices, default=SourceProvider.MANUAL
     )
@@ -67,8 +85,15 @@ class Event(models.Model):
 
     @property
     def tickets_sold(self) -> int:
-        """Quantidade já vendida (reservas pagas). Import local para não criar
-        dependência de módulo entre events e ticketing na hora de carregar as apps."""
+        """Quantity already sold (paid reservations). Uses the with_sold_counts()
+        annotation when available (list views); otherwise falls back to a
+        one-off query (single-instance use, e.g. inside the payment lock).
+        Local import to avoid a module-level dependency between events and
+        ticketing when the apps load."""
+        annotated = getattr(self, "_sold_count", None)
+        if annotated is not None:
+            return annotated
+
         from apps.ticketing.models import Reservation
 
         total = self.reservations.filter(status=Reservation.Status.PAID).aggregate(

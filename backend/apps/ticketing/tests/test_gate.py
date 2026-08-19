@@ -93,8 +93,8 @@ class TestGateValidate:
     def test_qr_signed_for_a_different_ticket_is_rejected(
         self, api_client, gate_user, published_event, paid_ticket
     ):
-        """Assinatura válida, mas pra um código que não existe mais/nunca existiu como
-        esse ticket especificamente — não pode ser aceito só por ter assinatura boa."""
+        """Valid signature, but for a code that never existed as this specific
+        ticket — a good signature alone must not be enough to accept it."""
         forged_but_signed = sign_ticket_code("CODIGO_QUE_NAO_EXISTE")
         api_client.force_authenticate(user=gate_user)
         response = api_client.post(

@@ -124,9 +124,9 @@ class Command(BaseCommand):
         return user
 
     def _seed_tickets(self, event, customer):
-        """2 ingressos pagos pro cliente 1 nesse evento: 1 já validado (pra já dar pra
-        testar o estado "já utilizado" sem precisar validar nada antes) e 1 ainda válido
-        (pra testar a validação de verdade). Só roda na primeira execução."""
+        """2 paid tickets for customer 1 on this event: 1 already validated (so
+        the "already used" state can be tested right away) and 1 still valid
+        (to test real validation). Only runs on the first execution."""
         existing = Ticket.objects.filter(reservation__event=event, owner=customer)
         if existing.exists():
             tickets = list(existing.order_by("id"))

@@ -24,9 +24,9 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
         if event.status != event.Status.PUBLISHED:
             raise serializers.ValidationError({"event": "Este evento não está publicado."})
 
-        # Checagem "de cortesia" pra dar feedback cedo — não é a fonte da verdade.
-        # A garantia real de não vender a mesma vaga duas vezes acontece de forma
-        # atômica na aprovação do pagamento (ver ReservationPayView).
+        # "Courtesy" check for early feedback — not the source of truth. The real
+        # guarantee against overselling happens atomically on payment approval
+        # (see ReservationPayView).
         if quantity > event.tickets_available:
             raise serializers.ValidationError(
                 {"quantity": f"Só restam {event.tickets_available} ingresso(s) disponível(is)."}
@@ -56,7 +56,7 @@ class ReservationSerializer(serializers.ModelSerializer):
 
 
 class PaySerializer(serializers.Serializer):
-    """Pagamento simulado — nenhum dado sensível é persistido de verdade."""
+    """Simulated payment — no sensitive data is actually persisted."""
 
     card_number = serializers.CharField(max_length=32)
     card_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
@@ -104,7 +104,7 @@ class GateValidateSerializer(serializers.Serializer):
 
 
 class PaymentResultSerializer(serializers.Serializer):
-    """Só para documentação — não é usado para montar a resposta de verdade."""
+    """Documentation only — not used to build the actual response."""
 
     reservation = ReservationSerializer()
     payment_status = serializers.ChoiceField(choices=["approved", "declined"])
@@ -112,7 +112,7 @@ class PaymentResultSerializer(serializers.Serializer):
 
 
 class GateValidateResultSerializer(serializers.Serializer):
-    """Só para documentação — não é usado para montar a resposta de verdade."""
+    """Documentation only — not used to build the actual response."""
 
     result = serializers.ChoiceField(
         choices=["valido", "invalido", "ja_utilizado", "evento_errado"]

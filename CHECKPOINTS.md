@@ -196,6 +196,44 @@ usuário, não do enunciado.
   e já validei manualmente no Checkpoint 6 (rodei 2x, conferi idempotência e autenticação);
   decisão consciente de não testar, não esquecimento.
 
+## ✅ Checkpoint 7b — Revisão do backend + comentários em inglês
+
+Pedido do usuário antes de seguir pro frontend: revisar todo o backend e trocar os comentários de
+português pra inglês, removendo qualquer coisa que soasse mais "narração pra quem está lendo a
+sessão" do que comentário de código de verdade.
+
+- **Revisão** (`/code-review high`, 3 agentes de verificação em paralelo): 4 achados confirmados.
+  - **Corrigido** — `ReservationPayView` fazia o `get_object_or_404` da `Reservation` *antes* do
+    `transaction.atomic()`, sem lock e sem reconferir o status lá dentro. Um duplo POST no mesmo
+    pagamento (duplo clique, retry de rede) passava os dois pela checagem de "pending" e o segundo
+    estourava em `IntegrityError` não tratado (500) na constraint unique de `Payment.reservation`.
+    Agora a `Reservation` é buscada com `select_for_update()` dentro da transação e o status é
+    reconferido ali — reserva já paga/recusada responde `409` limpo. Adicionei um teste de
+    concorrência de verdade (`test_two_simultaneous_pay_requests_for_the_same_reservation_only_one_succeeds`)
+    provando a correção.
+  - **Corrigido** — `EventSerializer` expunha `organizer_email` em `GET /api/events/` e
+    `GET /api/events/<id>`, ambos públicos e sem autenticação — vazamento de PII pra qualquer
+    visitante anônimo. Campo removido (nada no requisito precisa dele).
+  - **Corrigido (eficiência)** — `tickets_sold`/`tickets_available` rodavam uma query de agregação
+    cada, sem cache, em toda listagem de eventos (até 2N queries extra por página de N eventos).
+    Adicionei `Event.objects.with_sold_counts()` (annotate com `Sum` + filtro), usado nas 3
+    listagens (`EventListCreateView`, `OrganizerEventListView`, `GateEventListView`); a property
+    `tickets_sold` usa a anotação quando disponível e só cai pra query avulsa em buscas de uma
+    instância só.
+  - **Avaliado e mantido** — o link público de compartilhamento devolve o mesmo `qr_payload`
+    assinado que valida o ingresso na portaria, não uma visão só-leitura. Decisão deliberada: o
+    requisito é "compartilhar um ingresso via link", e o sentido de compartilhar um ingresso é o
+    destinatário poder usá-lo — é assim que compartilhamento de ingresso funciona no mundo real
+    (a pessoa manda o link/QR, quem recebe entra com ele). Documentado aqui pra não ser lido como
+    descuido.
+- **Comentários e docstrings do código traduzidos de PT-BR pra inglês** em todo `backend/apps/` e
+  `backend/config/` — só o que é comentário de desenvolvedor (`#`, docstrings). Textos que são
+  produto (mensagens de erro da API, `help_text`/`summary`/`description` do Swagger, labels de
+  `TextChoices`, conteúdo do seed) continuam em português de propósito — é o idioma da aplicação
+  pros usuários finais, não comentário de código.
+- Suíte inteira (53 testes) + `manage.py check` + `manage.py spectacular --fail-on-warn` +
+  `makemigrations --check` rodados de novo depois de tudo — tudo limpo.
+
 ## ⬜ Checkpoint 8 — Scaffold do frontend
 
 - Vite + React + TS, Tailwind, shadcn/ui (com identidade visual própria, não o tema default),

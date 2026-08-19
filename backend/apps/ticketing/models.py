@@ -6,7 +6,7 @@ from django.db import models
 
 from apps.events.models import Event
 
-# Alfabeto sem caracteres ambíguos (sem 0/O, 1/I/l) — pensado pra digitação manual na portaria.
+# Alphabet without ambiguous characters (no 0/O, 1/I/l) — meant for manual entry at the gate.
 _PUBLIC_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 
 
@@ -14,9 +14,9 @@ def generate_public_code():
     return "".join(secrets.choice(_PUBLIC_CODE_ALPHABET) for _ in range(10))
 
 
-# Nível de módulo (não aninhadas na classe) pra o drf-spectacular conseguir
-# importar cada choices via ENUM_NAME_OVERRIDES; os aliases <Model>.Status
-# abaixo preservam a leitura no resto do código (Reservation.Status.PAID etc).
+# Module level (not nested in the classes) so drf-spectacular can import each
+# choices via ENUM_NAME_OVERRIDES; the <Model>.Status aliases below keep the
+# rest of the code reading naturally (Reservation.Status.PAID etc).
 class ReservationStatus(models.TextChoices):
     PENDING = "pending", "Pendente"
     PAID = "paid", "Pago"
@@ -66,7 +66,7 @@ class Payment(models.Model):
         Reservation, on_delete=models.CASCADE, related_name="payment"
     )
     status = models.CharField(max_length=10, choices=Status.choices)
-    # Só os últimos dígitos do "cartão" simulado, pra exibir no recibo — nunca o número completo.
+    # Only the last digits of the simulated "card", to show on the receipt — never the full number.
     card_last_digits = models.CharField(max_length=4, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -79,8 +79,8 @@ class Ticket(models.Model):
     Status = TicketStatus
 
     reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name="tickets")
-    # Denormalizado a partir de reservation.event de propósito: a portaria consulta por
-    # ticket + evento sem precisar de join extra pra decidir "evento errado".
+    # Deliberately denormalized from reservation.event: the gate looks up by
+    # ticket + event without an extra join to decide "wrong event".
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="tickets")
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,

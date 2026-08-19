@@ -53,8 +53,8 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 
-# URLs da API não usam barra final; desligar evita redirect 301 em POST/PATCH
-# quando o cliente erra a barra (o que pode virar GET no meio do caminho).
+# API URLs don't use a trailing slash; disabling this avoids a 301 redirect on
+# POST/PATCH when the client gets the slash wrong (which can turn into a GET).
 APPEND_SLASH = False
 
 TEMPLATES = [
@@ -151,14 +151,14 @@ SPECTACULAR_SETTINGS = {
     ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
-    # Serve os assets do Swagger UI/ReDoc localmente (staticfiles), sem depender de CDN.
+    # Serves Swagger UI/ReDoc assets locally (staticfiles) instead of a CDN.
     "SWAGGER_UI_DIST": "SIDECAR",
     "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
     "REDOC_DIST": "SIDECAR",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
     "COMPONENT_SPLIT_REQUEST": True,
-    # Vários models têm um campo "status" com choices próprios — sem isso o
-    # gerador dá nomes genéricos tipo "Status361Enum" pros componentes do schema.
+    # Several models have their own "status" choices — without this the generator
+    # gives the schema components generic names like "Status361Enum".
     "ENUM_NAME_OVERRIDES": {
         "UserRoleEnum": "apps.accounts.models.UserRole.choices",
         "EventCategoryEnum": "apps.events.models.EventCategory.choices",

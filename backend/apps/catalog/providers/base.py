@@ -3,22 +3,22 @@ from datetime import datetime
 
 
 class CatalogProviderError(Exception):
-    """Erro de configuração/uso do provider (chave ausente, provider desconhecido)."""
+    """Provider configuration/usage error (missing key, unknown provider)."""
 
 
 @dataclass
 class CatalogItem:
-    """Resultado de busca no catálogo externo, normalizado entre providers.
+    """External catalog search result, normalized across providers.
 
-    Vira um *snapshot* pré-preenchido no formulário de criação de evento — o
-    organizador ainda edita tudo antes de publicar, então os campos "suggested_*"
-    são só sugestões, não uma referência viva à API externa.
+    Becomes a pre-filled *snapshot* in the event creation form — the organizer
+    still edits everything before publishing, so the "suggested_*" fields are
+    just suggestions, not a live reference to the external API.
     """
 
     provider: str
     external_id: str
     title: str
-    category: str  # "show" | "movie" — mesmos valores de Event.Category
+    category: str  # "show" | "movie" — same values as Event.Category
     image_url: str = ""
     description: str = ""
     subtitle: str = ""

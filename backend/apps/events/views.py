@@ -26,7 +26,7 @@ from .serializers import EventSerializer, EventWriteSerializer
     post=extend_schema(tags=["events"], summary="Criar evento (organizador)"),
 )
 class EventListCreateView(generics.ListCreateAPIView):
-    """GET público (busca/filtro nos eventos publicados) + POST do organizador."""
+    """Public GET (search/filter over published events) + organizer POST."""
 
     def get_serializer_class(self):
         return EventWriteSerializer if self.request.method == "POST" else EventSerializer
@@ -37,7 +37,7 @@ class EventListCreateView(generics.ListCreateAPIView):
         return [permissions.AllowAny()]
 
     def get_queryset(self):
-        qs = Event.objects.filter(status=Event.Status.PUBLISHED)
+        qs = Event.objects.with_sold_counts().filter(status=Event.Status.PUBLISHED)
         params = self.request.query_params
 
         q = params.get("q")
@@ -64,8 +64,8 @@ class EventListCreateView(generics.ListCreateAPIView):
         serializer.save(organizer=self.request.user)
 
     def create(self, request, *args, **kwargs):
-        # EventWriteSerializer não expõe id/tickets_sold/etc — a resposta usa o
-        # serializer de leitura pra devolver a representação completa do evento criado.
+        # EventWriteSerializer doesn't expose id/tickets_sold/etc — use the read
+        # serializer for the response so it returns the full created event.
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -79,8 +79,8 @@ class EventListCreateView(generics.ListCreateAPIView):
     patch=extend_schema(tags=["events"], summary="Editar evento (organizador dono)"),
 )
 class EventDetailView(generics.RetrieveUpdateAPIView):
-    """GET público (evento publicado, ou rascunho se for o próprio organizador) +
-    PATCH/PUT restrito ao organizador dono."""
+    """Public GET (published event, or a draft if it's the owning organizer) +
+    PATCH/PUT restricted to the owning organizer."""
 
     def get_serializer_class(self):
         return EventWriteSerializer if self.request.method in ("PUT", "PATCH") else EventSerializer
@@ -92,12 +92,12 @@ class EventDetailView(generics.RetrieveUpdateAPIView):
 
     def get_queryset(self):
         if self.request.method in ("PUT", "PATCH"):
-            # Escopar ao dono aqui já resolve a permissão de objeto: quem não é
-            # dono recebe 404, não precisa de uma checagem de posse separada.
+            # Scoping to the owner here already handles object-level permission:
+            # a non-owner gets a 404, no need for a separate ownership check.
             return Event.objects.filter(organizer=self.request.user)
 
         user = self.request.user
-        qs = Event.objects.all()
+        qs = Event.objects.with_sold_counts()
         if user.is_authenticated and getattr(user, "is_organizer", False):
             return qs.filter(Q(status=Event.Status.PUBLISHED) | Q(organizer=user))
         return qs.filter(status=Event.Status.PUBLISHED)
@@ -115,10 +115,10 @@ class EventDetailView(generics.RetrieveUpdateAPIView):
     get=extend_schema(tags=["events"], summary="Meus eventos (organizador, todos os status)")
 )
 class OrganizerEventListView(generics.ListAPIView):
-    """Lista própria do organizador (todos os status, com sold/capacity)."""
+    """Organizer's own listing (every status, with sold/capacity)."""
 
     permission_classes = [IsOrganizer]
     serializer_class = EventSerializer
 
     def get_queryset(self):
-        return Event.objects.filter(organizer=self.request.user)
+        return Event.objects.with_sold_counts().filter(organizer=self.request.user)

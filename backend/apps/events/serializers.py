@@ -4,18 +4,16 @@ from .models import Event
 
 
 class EventSerializer(serializers.ModelSerializer):
-    """Leitura — pública para eventos publicados, e para o organizador dono ver os próprios."""
+    """Read — public for published events, and for the owning organizer to see their own."""
 
     tickets_sold = serializers.ReadOnlyField()
     tickets_available = serializers.ReadOnlyField()
-    organizer_email = serializers.EmailField(source="organizer.email", read_only=True)
 
     class Meta:
         model = Event
         fields = [
             "id",
             "organizer",
-            "organizer_email",
             "source_provider",
             "source_id",
             "title",
@@ -38,7 +36,7 @@ class EventSerializer(serializers.ModelSerializer):
 
 
 class EventWriteSerializer(serializers.ModelSerializer):
-    """Criação/edição pelo organizador."""
+    """Creation/editing by the organizer."""
 
     class Meta:
         model = Event
