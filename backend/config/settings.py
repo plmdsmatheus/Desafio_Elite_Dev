@@ -51,6 +51,10 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 
+# URLs da API não usam barra final; desligar evita redirect 301 em POST/PATCH
+# quando o cliente erra a barra (o que pode virar GET no meio do caminho).
+APPEND_SLASH = False
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",

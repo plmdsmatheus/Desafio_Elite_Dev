@@ -62,18 +62,55 @@ plano original salvo em `/home/matheus-ubuntu/.claude/plans/giggly-bouncing-kern
 - A trava de concorrência em si (`transaction.atomic()` + `select_for_update()` no `Event`, na
   aprovação do pagamento) ainda não existe — é lógica de view, entra no Checkpoint 5.
 
-## ⬜ Checkpoint 4 — Catálogo externo (Ticketmaster + TMDb)
+## ✅ Checkpoint 4 — Catálogo externo (Ticketmaster + TMDb)
 
-- `apps/catalog/providers/`: `TicketmasterProvider` e `TMDbProvider` com interface comum
-  `search(query)`. Endpoint `GET /api/catalog/search?provider=...&q=...` (só organizador).
-- Chaves via `.env` (`TICKETMASTER_API_KEY`, `TMDB_API_KEY`), nunca expostas ao frontend.
+- `apps/catalog/providers/`: `CatalogItem` (dataclass normalizado) + `CatalogProvider` (interface
+  `search(query)`), `TicketmasterProvider` e `TMDbProvider` implementando ela. Registry em
+  `providers/__init__.py` (`get_provider(key)`).
+- TMDb usa Bearer token (`TMDB_API_READ_ACCESS_TOKEN`, v4 auth) se configurado, senão cai pro
+  `?api_key=` (v3). Ticketmaster sempre mapeia pra `category="show"`, TMDb pra `"movie"`.
+- Endpoint `GET /api/catalog/search?provider=ticketmaster|tmdb&q=...`, só organizador
+  (`IsOrganizer`). Erros de config/provider inválido/sem query → 400 com mensagem clara; erro de
+  rede na API externa → 502. Chaves nunca saem do backend.
+- **Verificado sem chave de API real** (não tenho acesso à internet neste sandbox pra chamada
+  ao vivo): parsing dos dois providers testado com payloads sintéticos no formato documentado das
+  APIs (evento completo, filme completo, evento com campos faltando) — todos os campos mapeados
+  corretamente, nenhum crash em dados ausentes. View testada com `APIRequestFactory` cobrindo os 4
+  casos: sem chave configurada (400), provider inválido (400), sem `q` (400), cliente tentando
+  acessar (403).
+- **Testado ao vivo** depois que o usuário colocou as chaves reais no `.env` (corrigi um espaço em
+  branco a mais que o `django-environ` não removeu sozinho e quebraria a autenticação nas APIs):
+  busca real "Coldplay" no Ticketmaster (20 resultados) e "Duna"/"Matrix" no TMDb (20 resultados,
+  via Bearer token v4) passando pela `CatalogSearchView` completa — permissão, serialização e
+  conversão de timezone (`America/Sao_Paulo`) tudo correto.
 
-## ⬜ Checkpoint 5 — Endpoints de events/reservations/payment/tickets/gate
+## ✅ Checkpoint 5 — Endpoints de events/reservations/payment/tickets/gate
 
-- CRUD de eventos pelo organizador + listagem/busca pública.
-- Reserva por quantidade, pagamento simulado, emissão de tickets com QR assinado
-  (`django.core.signing`), endpoint público de ticket compartilhado, validação na portaria com os
-  4 estados (`valido`/`invalido`/`ja_utilizado`/`evento_errado`).
+- **Events**: `GET/POST /api/events/` (lista pública com filtros `q`/`city`/`category`/`date` +
+  criação pelo organizador), `GET/PATCH /api/events/<id>` (leitura pública de publicados — ou do
+  próprio rascunho — e edição restrita ao dono), `GET /api/organizer/events` (lista própria com
+  `tickets_sold`/`tickets_available`). Posse é resolvida via `get_queryset` (quem não é dono recebe
+  404, não 403 — não vaza que o evento existe). Reduzir `capacity` abaixo do já vendido é bloqueado
+  na validação do serializer.
+- **Reservations/Payment**: `POST /api/reservations` (soft-check de disponibilidade, não é a fonte
+  da verdade), `POST /api/reservations/<id>/pay` — **aqui mora a trava de concorrência real**:
+  `transaction.atomic()` + `select_for_update()` no `Event`, recontagem de `tickets_sold` dentro do
+  lock, só then decide aprovar/recusar. Regra de recusa determinística: cartão terminado em `0000`.
+- **Tickets**: `GET /api/tickets/mine`, `GET /api/tickets/<share_slug>/public` (sem login). QR
+  assinado via `apps/ticketing/signing.py` (`django.core.signing`, salt dedicado).
+- **Gate**: `GET /api/gate/events` (sessões disponíveis), `POST /api/gate/validate` — aceita tanto
+  o payload assinado do QR quanto o `public_code` digitado à mão, sempre responde 200 com
+  `result` ∈ `valido`/`invalido`/`ja_utilizado`/`evento_errado`, e também usa `select_for_update`
+  no `Ticket` pra não permitir duas validações simultâneas da mesma corrida.
+- `APPEND_SLASH = False` nas settings (URLs da API não usam barra final; evita redirect 301
+  quebrando POST/PATCH).
+- **Verificado com testes de integração reais contra o Postgres** (via `manage.py shell`, limpando
+  os dados no final): fluxo completo organizador→cliente→portaria; **teste de concorrência de
+  verdade com threads** — dois clientes pagando ao mesmo tempo por um evento de capacidade 1: só 1
+  aprovado, só 1 ticket emitido; QR válido → `ja_utilizado` na segunda leitura → `evento_errado` em
+  outro evento → `invalido` com assinatura adulterada; pagamento recusado (cartão `...0000`) não
+  gera ticket; edição de evento por dono (200) vs. outro organizador (404) vs. cliente (403);
+  bloqueio de reduzir capacidade abaixo do vendido (400). Tudo passou, banco limpo depois.
 
 ## ⬜ Checkpoint 6 — Seed de dados de teste
 
