@@ -7,8 +7,8 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: eventos_db
     ports:
-      # 5433 no host para não colidir com um Postgres local já rodando em 5432.
-      # Dentro da rede do Compose o backend continua falando com "db:5432".
+      # 5433 on the host to avoid colliding with a local Postgres already on 5432.
+      # Inside the Compose network the backend still talks to "db:5432".
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -24,10 +24,10 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # Dentro da rede do Compose o Postgres é acessado pelo nome do serviço,
-      # não por "localhost" — sobrescreve o valor do .env só para essa variável.
+      # Inside the Compose network Postgres is reached by service name, not
+      # "localhost" — overrides just this one variable from the .env file.
       DATABASE_URL: postgres://postgres:postgres@db:5432/eventos_db
-    # Sem override de "command" — usa o CMD do Dockerfile (migrate + seed_demo_data + runserver).
+    # No "command" override — uses the Dockerfile's CMD (migrate + seed_demo_data + runserver).
     volumes:
       - ./backend:/app
     ports:
@@ -35,6 +35,23 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    env_file:
+      - ./frontend/.env
+    environment:
+      # Backend reached through the browser, not the Compose network — the
+      # API calls come from the user's machine, not from inside the container.
+      VITE_API_BASE_URL: http://localhost:8000/api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:

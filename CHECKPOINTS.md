@@ -234,12 +234,44 @@ sessão" do que comentário de código de verdade.
 - Suíte inteira (53 testes) + `manage.py check` + `manage.py spectacular --fail-on-warn` +
   `makemigrations --check` rodados de novo depois de tudo — tudo limpo.
 
-## ⬜ Checkpoint 8 — Scaffold do frontend
+## 📌 Item de polimento (fim do projeto) — Cache de catálogo com Redis
 
-- Vite + React + TS, Tailwind, shadcn/ui (com identidade visual própria, não o tema default),
-  estrutura de pastas (`api/`, `pages/`, `components/`, `hooks/`, `lib/`, `types/`), axios +
-  TanStack Query, auth context com guard de rotas por papel, `Dockerfile` do frontend + serviço no
-  Compose.
+Decisão com o usuário: Redis como cache do `CatalogSearchView` (evitar rate limit do Ticketmaster/TMDb) é
+aditivo e isolado — fica pra polimento final, depois do frontend funcionando ponta a ponta (dica
+do próprio enunciado: básico completo antes de agregar valor).
+
+## ✅ Checkpoint 8 — Esqueleto do frontend
+
+Dividido a pedido do usuário: só o esqueleto aqui (tooling + estrutura + build funcionando);
+telas/features reais, auth context de verdade e identidade visual própria ficam pro Checkpoint 9.
+
+- **Toolchain**: não havia Node.js disponível neste sandbox nem `apt`/`nvm` — baixei o binário
+  oficial (Node 24 LTS) direto de nodejs.org e linkei em `~/.local/bin` (mesmo padrão usado pro
+  Poetry no Checkpoint 1).
+- **Vite + React + TS** (`npm create vite@latest -- --template react-ts`), **Tailwind CSS v4**
+  (`@tailwindcss/vite`, sem `tailwind.config` — CSS-first) e **shadcn/ui** (CLI nova versão,
+  preset "nova"/Radix — tema default por enquanto, identidade visual própria fica pro Checkpoint 9
+  quando as telas de verdade existirem pra dar contexto de design).
+  Alias `@/*` configurado (`tsconfig` + `vite.config.ts`).
+- **Estrutura de pastas**: `src/api/` (cliente axios com refresh de JWT automático em 401 — só a
+  infra, sem endpoints específicos ainda), `src/pages/{auth,events,organizer,checkout,tickets,gate}/`
+  (uma página placeholder por rota, real o suficiente pra provar que o roteamento funciona),
+  `src/hooks/`, `src/lib/` (query client do TanStack Query), `src/types/` (tipos TS espelhando os
+  serializers do backend).
+- **Roteamento**: `react-router-dom`, todas as rotas planejadas já mapeadas em `App.tsx`
+  (`/`, `/eventos/:id`, `/login`, `/cadastro`, `/checkout/:id`, `/meus-ingressos`, `/t/:shareSlug` —
+  mesmo padrão de link que o backend gera —, `/organizador`, `/organizador/eventos/novo`,
+  `/organizador/eventos/:id/editar`, `/portaria`).
+- `Dockerfile` do frontend (dev server do Vite, `--host 0.0.0.0`) + serviço `frontend` no
+  `docker-compose.yml` (volume anônimo em `/app/node_modules` pra não deixar o bind mount do host
+  sobrescrever o `node_modules` instalado dentro do container).
+- **Verificado de verdade**: `npm run build` e `npm run lint` limpos (só 1 warning esperado em
+  código gerado pelo shadcn). Baixei Chromium via Playwright (sem `apt`/root disponíveis, precisei
+  do binário direto) pra tirar screenshot real do dev server rodando — roteamento confirmado
+  visualmente em duas rotas diferentes, Tailwind/shadcn aplicados, fonte Geist carregando, zero
+  erros de console.
+- Não consegui testar o `docker compose up` do frontend dentro deste sandbox (mesma limitação de
+  `docker` ausente já registrada nos checkpoints anteriores) — precisa de validação do usuário.
 
 ## ⬜ Checkpoint 9 — Telas do frontend
 
