@@ -26,6 +26,10 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Email-based login that returns the user's data alongside the token,
     avoiding a second call to /me just to know the role and redirect."""
 
+    default_error_messages = {
+        "no_active_account": "E-mail ou senha inválidos.",
+    }
+
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
