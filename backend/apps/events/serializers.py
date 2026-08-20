@@ -8,12 +8,16 @@ class EventSerializer(serializers.ModelSerializer):
 
     tickets_sold = serializers.ReadOnlyField()
     tickets_available = serializers.ReadOnlyField()
+    # Display name only — never the organizer's e-mail (see EventSerializer
+    # history: organizer_email was removed for leaking PII on a public endpoint).
+    organizer_name = serializers.CharField(source="organizer.first_name", read_only=True)
 
     class Meta:
         model = Event
         fields = [
             "id",
             "organizer",
+            "organizer_name",
             "source_provider",
             "source_id",
             "title",

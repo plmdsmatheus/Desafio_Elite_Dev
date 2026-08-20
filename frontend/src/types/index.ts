@@ -15,6 +15,7 @@ export type EventSourceProvider = "ticketmaster" | "tmdb" | "manual"
 export interface Event {
   id: number
   organizer: number
+  organizer_name: string
   source_provider: EventSourceProvider
   source_id: string
   title: string

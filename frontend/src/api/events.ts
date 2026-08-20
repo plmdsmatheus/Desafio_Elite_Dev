@@ -15,3 +15,7 @@ export function listEvents(params: EventListParams) {
   )
   return apiClient.get<Paginated<Event>>("/events/", { params: cleanParams }).then((res) => res.data)
 }
+
+export function getEvent(eventId: string | number) {
+  return apiClient.get<Event>(`/events/${eventId}`).then((res) => res.data)
+}

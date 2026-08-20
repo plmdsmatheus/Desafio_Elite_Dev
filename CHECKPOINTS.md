@@ -471,6 +471,92 @@ Pedido do usuário: página 1 da listagem em carrossel (até 6 eventos), página
   (carrossel mostra 1 card por vez no mobile). Removidos depois, banco voltou aos 3 eventos reais
   do seed. Suíte do backend (53 testes) passando com o novo `PAGE_SIZE`. `build`/`lint` limpos.
 
+### ✅ 9.4 — Detalhe do evento (`/eventos/:eventId`)
+
+- `src/api/events.ts`: `getEvent(id)` (`GET /api/events/{id}`, já retorna `description` completa —
+  não precisou de mudança no backend).
+- `EventDetailPage`: banner grande reaproveitando `EventThumbnail` (mesmo placeholder da listagem
+  se a imagem faltar/quebrar), badge de categoria, título, data completa (`formatDateTime`, por
+  extenso — diferente da versão curta usada nos cards) e local; descrição em "Sobre o evento"
+  (omitida se vazia). Ao lado, card fixo (`lg:sticky`) com preço, disponibilidade (reaproveita
+  `getAvailabilityLevel` do card — mesmo semáforo verde/âmbar/vermelho, texto mais explícito:
+  "42 ingressos disponíveis"/"Última unidade disponível"/"Esgotado") e o CTA de reserva, que muda
+  conforme quem está olhando: esgotado → botão desabilitado; deslogado → "Entrar para reservar"
+  (link pra `/login`); logado como organizador/portaria → nota explicando que só cliente reserva;
+  logado como cliente → "Reservar ingressos" pra `/checkout/:id` (rota ainda placeholder, é a
+  próxima tela). Loading via `Skeleton`, evento inexistente/não publicado (404) mostra "Evento não
+  encontrado" com link de volta — mesmo padrão do ingresso compartilhado (9.2).
+- **Verificado com Playwright** contra os eventos semeados de verdade: estado deslogado, logado
+  como cliente (CTA leva pro checkout), evento inexistente (404), claro/escuro (classe `.dark`,
+  não `prefers-color-scheme` — esse app usa toggle manual), mobile (375px). Estados "poucas
+  vagas"/"esgotado" testados criando 2 eventos temporários com reservas pagas de verdade
+  (`Reservation`+`Payment`+`Ticket` via shell, não só editando `capacity`, pra exercitar o mesmo
+  cálculo de `tickets_sold` usado em produção) — removidos depois (delete em cascata confirmado:
+  reservation/payment/tickets junto). Suíte do backend (53 testes) rodada de novo no final —
+  passando, banco voltou ao estado original do seed (3 publicados, 1 rascunho). `build`/`lint`
+  limpos, zero erros de console.
+
+### ✅ 9.4b — Feedback do usuário: paleta nova + refinamento do detalhe do evento
+
+Usuário mandou 6 pedidos sobre a tela de detalhe (e a paleta, pro site todo).
+
+- **Paleta da marca trocada** (era petróleo/teal claro, virou visual escuro de alto contraste):
+  `#B6FF00` (lima — destaques/CTAs), `#050505` (fundo principal), `#0A3B2A` (blocos/cards),
+  `#063C46` (elementos gráficos/bordas), `#FFFFFF` (texto), `#E5E5E5` (texto secundário).
+  Reescrevi `src/index.css`: os 6 tons viram variáveis nomeadas por papel fixo (não é mais uma
+  escala clara→escura como a paleta anterior), e os tokens do shadcn são derivados só a partir
+  delas. Como a aplicação nunca teve um toggle de tema (nada no código liga a classe `.dark`), os
+  blocos `:root` e `.dark` agora têm exatamente os mesmos valores — um tema só, visual escuro fixo
+  — em vez de manter uma variante clara morta. `--primary-foreground` é o quase-preto do fundo
+  (não branco), porque texto preto sobre o lima `#B6FF00` lê muito melhor que texto branco.
+  `--success` ajustado pra um verde-esmeralda (`#34d399`) pra não colidir visualmente com o lima
+  do `--primary` no semáforo de disponibilidade.
+- **Seletor de quantidade**: `src/components/quantity-stepper.tsx` (stepper -/+ reutilizável, com
+  variante `compact` pra caber na barra fixa do mobile), limitado a
+  `min(tickets_available, 10)` — teto arbitrário só pra não deixar o stepper rolar até números
+  absurdos, não é regra de negócio do backend. O link de reserva carrega a quantidade escolhida
+  (`/checkout/:id?qty=N`) pra já chegar pronta quando a tela de checkout existir.
+- **Card de compra sticky (desktop) / barra fixa (mobile)**: extraído pra
+  `src/components/purchase-panel.tsx` — um componente só que renderiza os dois layouts (evita
+  duplicar a lógica de disponibilidade/CTA). Desktop: `position: sticky` como já era. Mobile: o
+  card em si fica `hidden`, e uma barra `fixed inset-x-0 bottom-0` no lugar (preço + estepper
+  compacto + CTA), com `pb-24` no container da página pra nada do conteúdo ficar escondido atrás
+  dela. **Bug real pego testando em 320px**: o preço sem `truncate` estourava visualmente por cima
+  do seletor de quantidade quando o total tinha mais dígitos (ex.: R$ 450,00 com 3 unidades) — a
+  combinação `min-w-0` (permite o flex item encolher) sem `truncate` no texto deixa o texto
+  renderizar no tamanho natural e vazar visualmente pra cima do vizinho. Corrigido com `truncate`
+  no preço + rótulo de disponibilidade mais curto (`"98 disponíveis"` em vez de
+  `"98 ingressos disponíveis"`) só na variante compacta da barra.
+- **Local reestruturado**: nome do local em destaque, endereço+cidade numa linha com ícone de
+  pin, e link "Ver no mapa ↗" (`ArrowUpRight`) que monta uma URL de busca do Google Maps
+  (`google.com/maps/search/?api=1&query=...`) a partir de venue/endereço/cidade — abre em nova aba.
+- **Botão de compartilhar** ao lado do título: usa `navigator.share` (share sheet nativo) quando
+  disponível, senão cai pra copiar o link (`navigator.clipboard.writeText`) com feedback visual
+  temporário ("Link copiado!" por 2s). Os dois caminhos (cancelar o share nativo, ou permissão de
+  clipboard negada) são tratados em silêncio — nenhum dos dois é um erro de verdade.
+- **Organizador no detalhe**: `EventSerializer` ganhou `organizer_name` (nome do organizador,
+  `source="organizer.first_name"`) — deliberadamente só o nome, não o e-mail, seguindo a mesma
+  linha da correção do Checkpoint 7b que removeu `organizer_email` por vazar PII num endpoint
+  público. Seção "Organizado por" com emoji 🎭 + nome, exibida quando o evento tem organizador.
+- **Refactor pequeno**: `AVAILABILITY_TEXT_CLASS` (mapa de cor por nível de disponibilidade)
+  extraído de `event-card.tsx` pra `lib/availability.ts`, agora reusado também pelo
+  `purchase-panel.tsx` — já eram os mesmos 3 valores duplicados, ficou um terceiro uso.
+- O `useEffect` inicial pra resetar a quantidade ao trocar de evento (`setQuantity(1)` num efeito)
+  disparou o warning `set-state-in-effect` do oxlint — resolvido do mesmo jeito que o `useAuth` no
+  Checkpoint 9.1: sem efeito nenhum, o conteúdo carregado vira um componente próprio
+  (`EventDetailContent`) montado com `key={event.id}`, então o React reseta o estado sozinho ao
+  trocar de evento.
+- **Verificado com Playwright**: paleta nova em home/detalhe/login (claro contraste, zero conflito
+  visual). Sticky confirmado via `getComputedStyle` (`position: sticky`, `top: 32px` no desktop) e
+  a barra fixa via `position: fixed`/`bottom: 0` no mobile — inclusive confirmando que ela não
+  sobrepõe o conteúdo real no fim da página (só um artefato do modo `fullPage` do Playwright com
+  elementos `fixed`, não um bug de verdade). Estepper testado incrementando/decrementando com total
+  recalculando; os 3 estados do CTA (esgotado / deslogado / não-cliente / cliente) testados criando
+  um evento temporário esgotado de verdade (reserva paga + ticket via shell) e logando como
+  portaria — removido depois. 320px, 375px, 1280px testados. `manage.py spectacular --fail-on-warn`
+  e suíte do backend (53 testes) passando depois do campo novo no serializer. `build`/`lint`
+  limpos.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção

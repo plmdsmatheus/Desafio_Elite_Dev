@@ -6,3 +6,11 @@ export function getAvailabilityLevel(available: number, capacity: number): Avail
   if (capacity > 0 && available / capacity <= 0.15) return "low"
   return "high"
 }
+
+/** Shared text color per level — reused by the event card badge and the
+ * purchase panel so the semaphore reads the same everywhere. */
+export const AVAILABILITY_TEXT_CLASS: Record<AvailabilityLevel, string> = {
+  high: "text-success",
+  low: "text-warning",
+  sold_out: "text-destructive",
+}

@@ -3,17 +3,15 @@ import { Link } from "react-router-dom"
 import { EventThumbnail } from "@/components/event-thumbnail"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { type AvailabilityLevel, getAvailabilityLevel } from "@/lib/availability"
+import {
+  AVAILABILITY_TEXT_CLASS,
+  type AvailabilityLevel,
+  getAvailabilityLevel,
+} from "@/lib/availability"
 import { formatCurrency, formatDateShort } from "@/lib/format"
 import { CATEGORY_BADGE_CLASS, CATEGORY_LABEL } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import type { Event } from "@/types"
-
-const AVAILABILITY_STYLE: Record<AvailabilityLevel, string> = {
-  high: "text-success",
-  low: "text-warning",
-  sold_out: "text-destructive",
-}
 
 const AVAILABILITY_DOT: Record<AvailabilityLevel, string> = {
   high: "bg-success",
@@ -67,7 +65,7 @@ export function EventCard({ event }: { event: Event }) {
             <span
               className={cn(
                 "flex items-center gap-1.5 text-xs font-medium",
-                AVAILABILITY_STYLE[level],
+                AVAILABILITY_TEXT_CLASS[level],
               )}
             >
               <span className={cn("size-2 rounded-full", AVAILABILITY_DOT[level])} />
