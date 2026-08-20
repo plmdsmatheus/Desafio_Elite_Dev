@@ -452,6 +452,25 @@ Usuário mandou uma referência visual e pediu 6 ajustes específicos nos cards 
   no banco, confirmando visualmente as cores certas — depois removidos pra não sujar os dados de
   teste. Testado em claro/escuro/mobile. `build`/`lint` limpos.
 
+### ✅ 9.3c — Carrossel na página 1, grid estático nas seguintes
+
+Pedido do usuário: página 1 da listagem em carrossel (até 6 eventos), páginas 2+ continuam grid.
+
+- **Decisão tomada com o usuário**: em vez de buscar 20 eventos e cortar pra 6 no carrossel
+  (escondendo os outros 14 até nunca), mudei o `PAGE_SIZE` do DRF de 20 pra 6 — a página 1 (agora
+  com exatamente 6) vira o carrossel, e a página 2 em diante busca os próximos 6 de cada vez pro
+  grid. Nenhum evento fica inacessível entre os dois modos de exibição.
+- shadcn `carousel` (Embla por baixo) instalado. `src/components/event-carousel.tsx`: reaproveita
+  o mesmo `EventCard` de sempre, cada slide com a mesma largura responsiva das colunas do grid
+  (`basis-full sm:basis-1/2 lg:basis-1/3`) — visualmente é o mesmo card, só muda como é navegado.
+- `EventListPage`: `page === 1` renderiza `<EventCarousel />`, senão o grid de sempre. Paginação
+  (`Anterior`/`Próxima`) continua funcionando igual nos dois modos.
+- **Verificado com Playwright**: criei 8 eventos temporários (total 11 publicados) pra ter volume
+  suficiente pra testar de verdade — carrossel com 6 na página 1, seta "próximo slide" avançando
+  corretamente, página 2 caindo no grid estático com os 5 restantes, tudo em claro/escuro/mobile
+  (carrossel mostra 1 card por vez no mobile). Removidos depois, banco voltou aos 3 eventos reais
+  do seed. Suíte do backend (53 testes) passando com o novo `PAGE_SIZE`. `build`/`lint` limpos.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção

@@ -137,7 +137,10 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
-    "PAGE_SIZE": 20,
+    # 6 casa com o carrossel de "até 6 eventos" na home do frontend — a página 1
+    # (carrossel) e as páginas seguintes (grade estática) usam o mesmo tamanho,
+    # então nenhum evento fica escondido entre um modo de exibição e outro.
+    "PAGE_SIZE": 6,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 

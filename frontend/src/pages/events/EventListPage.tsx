@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 import { type EventListParams, listEvents } from "@/api/events"
 import { EventCard } from "@/components/event-card"
+import { EventCarousel } from "@/components/event-carousel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -128,11 +129,15 @@ export function EventListPage() {
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {data.results.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
-          </div>
+          {page === 1 ? (
+            <EventCarousel events={data.results} />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {data.results.map((event) => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">{data.count} evento(s) encontrado(s)</p>
