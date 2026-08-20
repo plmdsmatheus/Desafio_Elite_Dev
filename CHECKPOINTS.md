@@ -622,6 +622,50 @@ letra mudando de cor pra lima, sem preenchimento.
   papel) com screenshot confirmando que só a cor do texto muda pra lima, sem nenhum fundo/caixa.
   `build`/`lint` limpos.
 
+### ✅ 9.5 — Reserva + pagamento simulado (`/checkout/:eventId`)
+
+- `src/api/reservations.ts`: `createReservation` (`POST /api/reservations`) e `payReservation`
+  (`POST /api/reservations/{id}/pay`).
+- `CheckoutPage`: assistente de 3 passos com indicador visual no topo (círculos numerados +
+  conector, rótulo de texto escondido em telas muito estreitas — achei um overflow real testando
+  em 320px, "Confirmação" cortava na borda direita; corrigido escondendo os rótulos e encurtando os
+  conectores abaixo do breakpoint `sm`).
+  1. **Revisão**: resumo do evento (data/local), seletor de quantidade (reaproveita o mesmo
+     `QuantityStepper` do detalhe do evento, mesmo teto de `MAX_QUANTITY_PER_RESERVATION` — que
+     extraí pra `lib/availability.ts` pra não duplicar o número entre `purchase-panel.tsx` e essa
+     tela), preço unitário e total. Quantidade inicial vem do `?qty=` que o botão "Reservar
+     ingressos" do detalhe do evento já mandava (Checkpoint 9.4b) — clampada entre 1 e o menor
+     valor entre estoque disponível e o teto. "Confirmar reserva" cria a `Reservation` (fica
+     `pending` no backend) e avança pro pagamento.
+  2. **Pagamento**: formulário simulado (`card_number` obrigatório, nome/validade/CVV opcionais —
+     espelha exatamente o que o `PaySerializer` do backend aceita). Número do cartão e validade
+     formatados enquanto digita (`4111 1111 1111 1111`, `MM/AA`). Texto de ajuda avisando a regra
+     determinística do backend (cartão terminado em `0000` recusa) — documentado na tela em vez de
+     só no README, pra quem for testar não precisar sair da UI. Envia pro
+     `POST /reservations/{id}/pay`.
+  3. **Confirmação**: aprovado → ícone de check verde, contagem de ingressos gerados, links pra
+     "Meus ingressos" (ainda placeholder — próximo checkpoint) e voltar ao evento. Recusado → ícone
+     de X vermelho, botão "Tentar novamente" que **descarta a reserva recusada e volta pro passo 1**
+     (não tenta pagar de novo a mesma reserva — o backend responde `409` pra isso, já que o status
+     dela virou `declined`, não `pending`; refletir esse comportamento na UI evita o usuário cair
+     num erro que não entenderia).
+  - **Guarda de acesso**: sem login → `<Navigate to="/login" />`; logado mas não-cliente
+    (organizador/portaria) → `<Navigate to="/" />`. Sem checagem de `isLoading` do `useAuth()`
+    aqui porque o `App.tsx` já bloqueia toda a árvore de rotas até a sessão resolver (mesmo padrão
+    que o `LoginPage` já usa).
+  - Estado do assistente (`quantity`/`reservation`/`paymentResult`/erros) vive num componente
+    filho `CheckoutFlow` montado com `key={event.id}` — mesmo padrão do `EventDetailContent`
+    (Checkpoint 9.4) pra resetar o estado sem precisar de `useEffect`.
+- **Verificado com Playwright contra o backend real** (não só visual): fluxo completo aprovado
+  (cartão terminado em `1111`) gerando 2 tickets de verdade — conferido direto no banco via shell
+  (`Reservation` `paid`, 2 `Ticket`s). Fluxo recusado (cartão `...0000`) confirmado no banco como
+  `declined`, zero tickets. "Tentar novamente" testado voltando ao passo 1 com a quantidade
+  preservada. Guarda de acesso testada nos dois casos (deslogado → `/login`, organizador →
+  `/`). 320px/375px testados (payment form e indicador de passos sem overflow — `scrollWidth`
+  conferido igual ao `clientWidth`). Dados de teste removidos do banco depois. Suíte do backend
+  (53 testes) e `spectacular --fail-on-warn` seguem passando (nenhuma mudança no backend nesta
+  etapa). `build`/`lint` do frontend limpos.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção

@@ -2,14 +2,14 @@ import { Link } from "react-router-dom"
 import { QuantityStepper } from "@/components/quantity-stepper"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { AVAILABILITY_TEXT_CLASS, getAvailabilityLevel } from "@/lib/availability"
+import {
+  AVAILABILITY_TEXT_CLASS,
+  getAvailabilityLevel,
+  MAX_QUANTITY_PER_RESERVATION,
+} from "@/lib/availability"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Event, User } from "@/types"
-
-// Simple sanity cap on a single reservation — not a business rule from the
-// backend, just keeps the stepper from scrolling to absurd numbers.
-const MAX_QUANTITY_PER_RESERVATION = 10
 
 function availabilityText(available: number): string {
   if (available <= 0) return "Esgotado"
