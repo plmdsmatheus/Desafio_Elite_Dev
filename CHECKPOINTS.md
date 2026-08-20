@@ -353,6 +353,105 @@ Usuário não gostou da paleta cinza monocromática padrão do shadcn e pediu um
 - **Verificado com Playwright** em 3 larguras (1280px, 375px, 320px), logado e deslogado, com
   screenshot antes/depois confirmando o bug de overflow e a correção.
 
+### ✅ 9.2 — Ingresso compartilhado (`/t/:shareSlug`)
+
+Pulei a ordem original (lista de eventos → detalhe → checkout → meus ingressos → compartilhado) a
+pedido do usuário — essa tela é a mais isolada: o backend já está pronto desde o Checkpoint 5, não
+depende de nenhuma outra tela do frontend existir, e dá pra testar ponta a ponta usando os tickets
+já semeados.
+
+- `qrcode.react` instalado; componentes shadcn `badge` e `skeleton` adicionados.
+- `src/api/tickets.ts` (`getPublicTicket`) + `src/lib/format.ts` (`formatDateTime`/`formatCurrency`,
+  `Intl` em pt-BR — vai ser reaproveitado nas próximas telas).
+- `PublicTicketPage`: evento (título/categoria/local/data), badge de status
+  (`valido`→primary, `utilizado`→secondary, `cancelado`→destructive), QR renderizado a partir do
+  `qr_payload` (sempre num box branco fixo, mesmo no tema escuro — QR precisa de contraste
+  claro/escuro pra ser lido, não pode seguir o tema), código público como texto de apoio, timestamp
+  de validação quando já utilizado, estado de "não encontrado" pra slug inválido/inexistente.
+
+**Problema real encontrado e resolvido**: o `docker compose up` do usuário estava com o
+`node_modules` do container dessincronizado — pacotes que adicionei depois que o container subiu
+pela primeira vez (`qrcode.react`, componentes shadcn novos) não aparecem lá, porque
+`docker-compose.yml` usa um volume anônimo em `/app/node_modules` de propósito (pra não deixar o
+bind mount do host sobrescrever o `node_modules` instalado na imagem) — mas isso também significa
+que o container não pega automaticamente pacotes novos instalados depois. Enquanto isso, passei a
+rodar minha própria instância local isolada pra continuar testando sem depender disso: backend via
+`poetry run manage.py runserver` na porta 8001 (mesmo Postgres, `.env` local com `CORS_ALLOWED_ORIGINS`
+incluindo também a porta 5174) + frontend via `npm run dev --port 5174`.
+
+**Correção da correção**: testei `docker compose up --build` de verdade e ainda deu o mesmo erro —
+`--build` sozinho não basta. Pegadinha clássica do Compose: o volume anônimo em `/app/node_modules`
+**persiste entre execuções**, mesmo reconstruindo a imagem do zero; o Compose reaproveita o volume
+velho em vez de recriar ele, então o `node_modules` desatualizado continua "tampando" o da imagem
+nova. **Comando certo, sempre que eu adicionar uma dependência nova no frontend**:
+`docker compose up --build -V` (a flag `-V`/`--renew-anon-volumes` força recriar os volumes
+anônimos também).
+
+- **Verificado de ponta a ponta de verdade, não só visual**: usei os tickets já semeados (um
+  válido, um utilizado) pra testar os três estados na tela real; e fui além do visual — peguei o
+  `qr_payload` exatamente como renderizado na página e mandei pro `POST /api/gate/validate` de
+  verdade (logado como o usuário de portaria semeado), confirmando que o QR gerado no frontend é
+  aceito pelo backend como válido. Isso consumiu o ticket "válido" de demonstração (virou
+  "utilizado"), então resetei o status no banco depois pra não estragar os dados de teste que o
+  README vai apontar pro avaliador. Testado também em claro/escuro e mobile (375px). Suíte
+  completa do backend (53 testes) rodada de novo no final — tudo passando.
+
+### ✅ 9.3 — Lista de eventos (home pública)
+
+- `src/api/events.ts` (`listEvents`, filtra parâmetros vazios antes de mandar pro backend).
+- `EventListPage`: busca por texto (`q`), cidade, categoria (select) e data — aplicados só ao
+  submeter o formulário, não a cada tecla (evita martelar a API); paginação via `next`/`previous`
+  do DRF (`keepPreviousData` do TanStack Query pra não piscar a lista trocando de página); estados
+  de carregamento (skeleton), vazio e "esgotado" (badge quando `tickets_available === 0`).
+- `src/components/event-thumbnail.tsx`: componente compartilhado (também vai servir pro detalhe do
+  evento) — mostra a imagem do evento ou um placeholder quando não tem `image_url` **ou quando a
+  URL quebra** (`onError`). Achei isso testando com os dados semeados: os `image_url` do seed são
+  fake (não apontam pra imagem de verdade), o que gerava ícone de "imagem quebrada" do navegador —
+  e além disso deixava os cards com altura desigual no grid (o card sem imagem esticava com espaço
+  vazio embaixo pra acompanhar os vizinhos). Corrigido tratando "sem imagem" e "imagem quebrada" do
+  mesmo jeito, com um bloco de tamanho fixo (`aspect-video`) sempre presente.
+- `src/lib/labels.ts`: `CATEGORY_LABEL` extraído (já era usado no ingresso compartilhado, terceiro
+  uso vem com o detalhe do evento, que é a próxima tela).
+- **Verificado com Playwright** contra os 3 eventos semeados de verdade: busca, filtro por
+  categoria, busca sem resultado, limpar filtros, claro/escuro, mobile (375px). Zero erros de
+  console. `build`/`lint` limpos.
+
+### ✅ 9.3b — Refinamento visual dos cards (feedback do usuário)
+
+Usuário mandou uma referência visual e pediu 6 ajustes específicos nos cards de evento:
+
+- **Placeholder "bonito" em vez de ícone de imagem quebrada**: `EventThumbnail` redesenhado —
+  gradiente sutil na cor da marca (`from-primary/20 to-transparent`), ícone de calendário grande
+  e discreto, com categoria + data curta como legenda. Resolve o mesmo problema do Checkpoint 9.3
+  de um jeito mais elaborado, como pedido.
+- **Preço e disponibilidade em destaque**: preço agora é o elemento mais proeminente do rodapé do
+  card (`text-lg font-bold text-primary`). Disponibilidade virou indicador semáforo — criei
+  `src/lib/availability.ts` (`getAvailabilityLevel`: esgotado se 0, "poucas vagas" se ≤15% da
+  capacidade, senão disponível) e adicionei os tokens `--success`/`--warning` no tema (verde/âmbar
+  — cores semânticas universais, fora da paleta de marca de propósito, no mesmo espírito do
+  `--destructive` que o shadcn já trazia).
+- **Box atrás do filtro**: formulário de busca agora tem fundo (`bg-card`) e borda, em vez de ficar
+  camuflado direto no fundo da página.
+- **Data compacta**: `formatDateShort()` novo em `src/lib/format.ts` — "25 ago · 14:53" em vez da
+  data por extenso (que ficava só na tela de ingresso compartilhado).
+- **Cards "vivos" no hover**: elevação (-2px), sombra e zoom leve na imagem/placeholder (1.05x).
+  Pegadinha ao testar: o Tailwind v4 usa a propriedade CSS `translate` nativa (não mais
+  `transform`) pros utilitários de translate/scale — testei `getComputedStyle(...).transform`
+  primeiro e vi "none", achei que tinha quebrado; era só a propriedade errada sendo checada.
+  Confirmado certo depois checando `translate`/`scale` diretamente. Proporção da imagem trocada de
+  `aspect-video` pra altura fixa (~40% do card, como pedido).
+- **Categoria mais visual**: badge de categoria movido pra baixo da imagem/placeholder, com cores
+  diferentes por categoria — mantendo as dentro da família teal da marca (show = contorno na cor
+  primária, filme = preenchido com o tom accent) em vez de introduzir uma cor nova só pra
+  diferenciar, pra não fugir da identidade visual escolhida.
+- Extraído `src/components/event-card.tsx` (o card tinha crescido demais pra ficar inline na
+  página de listagem).
+- **Verificado com Playwright de verdade**: hover conferido via `getComputedStyle` (translate,
+  box-shadow e scale mudando corretamente ao simular `:hover`), e os 3 estados do semáforo
+  (verde/amarelo/vermelho) testados criando 2 eventos temporários com estoque baixo/zerado direto
+  no banco, confirmando visualmente as cores certas — depois removidos pra não sujar os dados de
+  teste. Testado em claro/escuro/mobile. `build`/`lint` limpos.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção
