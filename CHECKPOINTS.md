@@ -557,6 +557,24 @@ Usuário mandou 6 pedidos sobre a tela de detalhe (e a paleta, pro site todo).
   e suíte do backend (53 testes) passando depois do campo novo no serializer. `build`/`lint`
   limpos.
 
+### ✅ 9.4c — Ajuste fino da paleta: DNA de só 3 cores
+
+Usuário refinou a definição da paleta: o DNA da marca é só `#050505` (preto — base
+tecnológica/premium) + `#B6FF00` (lima — única cor de ação/reconhecimento) + `#FFFFFF` (texto/
+contraste). Os tons de verde (`#0A3B2A`) e teal (`#063C46`) do 9.4b saíam desse DNA — reescrevi
+`src/index.css` de novo: só 3 variáveis de marca (`--brand-bg`/`--brand-accent`/`--brand-white`),
+e toda superfície intermediária (card, popover, secondary, muted, border, accent) agora é um
+`color-mix()` de branco dentro do preto — hierarquia só por brilho (preto → cinza → branco), sem
+nenhuma cor "nova" fora das 3. Efeito prático: os cards deixaram de ter aquele fundo esverdeado e
+viraram um cinza-quase-preto neutro (elevação sutil sobre o fundo), o que faz o lima se destacar
+mais nos CTAs/preço — exatamente o racional que o usuário deu ("o lima só funciona como cor de
+ação se o resto for neutro"). `--ring` continua lima (foco visual também é "ação"). `--success`/
+`--warning`/`--destructive` mantidos como cores semânticas de estado (não fazem parte do DNA da
+marca, são convenção de UX — verde/âmbar/vermelho pra disponível/pouco/esgotado).
+- **Verificado com Playwright**: home, detalhe do evento (desktop e a barra fixa mobile), login e
+  o ingresso com QR — QR continua com o box branco fixo de propósito (ilegível não pode seguir
+  tema). `build`/`lint` limpos, suíte do backend (53 testes) sem regressão (mudança foi só CSS).
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção

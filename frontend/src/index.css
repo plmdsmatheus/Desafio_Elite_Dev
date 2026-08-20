@@ -6,25 +6,26 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Paleta da marca — visual escuro de alto contraste, um tom por papel fixo
- * (não é uma escala clara→escura como a anterior):
- *   --brand-bg       #050505  fundo principal (quase preto)
- *   --brand-block    #0A3B2A  blocos/cards, gradientes, áreas secundárias
- *   --brand-graphic  #063C46  elementos gráficos, bordas, transições
- *   --brand-accent   #B6FF00  destaques, CTAs, elementos de impacto (lima)
- *   --brand-white    #FFFFFF  texto principal, áreas de contraste
- *   --brand-neutral  #E5E5E5  texto secundário, fundos neutros
+ * DNA visual da marca — só 3 cores, de propósito (preto = base
+ * tecnológica/premium, lima = única cor de ação/reconhecimento, branco =
+ * texto/contraste):
+ *   --brand-bg      #050505  base premium/tecnológica
+ *   --brand-accent  #B6FF00  cor de ação — CTAs, preço, destaques (a única
+ *                            cor "viva" da UI; se tudo vira lima, ela para
+ *                            de significar "ação")
+ *   --brand-white   #FFFFFF  texto e contraste
+ * Toda superfície intermediária (cards, bordas, texto secundário, hover) é
+ * um tom de preto/branco via color-mix() — não uma cor nova. Isso mantém a
+ * hierarquia só no brilho (preto → cinza → branco), com o lima reservado só
+ * pra ação, do jeito que o usuário definiu o DNA da marca.
  * Só um tema (não claro/escuro) — os blocos :root e .dark abaixo usam os
  * mesmos valores de propósito, pra não deixar nada quebrado se um toggle de
  * tema for adicionado depois.
  */
 :root {
   --brand-bg: #050505;
-  --brand-block: #0a3b2a;
-  --brand-graphic: #063c46;
   --brand-accent: #b6ff00;
   --brand-white: #ffffff;
-  --brand-neutral: #e5e5e5;
 }
 
 @theme inline {
@@ -75,73 +76,73 @@
 :root {
     --background: var(--brand-bg);
     --foreground: var(--brand-white);
-    --card: var(--brand-block);
+    --card: color-mix(in oklch, var(--brand-white) 7%, var(--brand-bg));
     --card-foreground: var(--brand-white);
-    --popover: var(--brand-block);
+    --popover: color-mix(in oklch, var(--brand-white) 9%, var(--brand-bg));
     --popover-foreground: var(--brand-white);
     --primary: var(--brand-accent);
     --primary-foreground: var(--brand-bg);
-    --secondary: var(--brand-graphic);
+    --secondary: color-mix(in oklch, var(--brand-white) 12%, var(--brand-bg));
     --secondary-foreground: var(--brand-white);
-    --muted: color-mix(in oklch, var(--brand-block) 55%, var(--brand-bg));
-    --muted-foreground: var(--brand-neutral);
-    --accent: var(--brand-graphic);
+    --muted: color-mix(in oklch, var(--brand-white) 6%, var(--brand-bg));
+    --muted-foreground: color-mix(in oklch, var(--brand-white) 62%, var(--brand-bg));
+    --accent: color-mix(in oklch, var(--brand-white) 14%, var(--brand-bg));
     --accent-foreground: var(--brand-white);
     --destructive: oklch(0.704 0.191 22.216);
     --warning: #fbbf24;
     --success: #34d399;
-    --border: color-mix(in oklch, var(--brand-graphic) 55%, transparent);
-    --input: color-mix(in oklch, var(--brand-graphic) 45%, transparent);
+    --border: color-mix(in oklch, var(--brand-white) 14%, transparent);
+    --input: color-mix(in oklch, var(--brand-white) 18%, transparent);
     --ring: var(--brand-accent);
     --chart-1: var(--brand-accent);
-    --chart-2: var(--brand-graphic);
-    --chart-3: var(--brand-block);
-    --chart-4: var(--brand-neutral);
-    --chart-5: color-mix(in oklch, var(--brand-accent) 50%, var(--brand-graphic));
+    --chart-2: color-mix(in oklch, var(--brand-white) 55%, var(--brand-bg));
+    --chart-3: color-mix(in oklch, var(--brand-white) 30%, var(--brand-bg));
+    --chart-4: color-mix(in oklch, var(--brand-white) 80%, var(--brand-bg));
+    --chart-5: color-mix(in oklch, var(--brand-accent) 45%, var(--brand-white));
     --radius: 0.625rem;
     --sidebar: var(--brand-bg);
     --sidebar-foreground: var(--brand-white);
     --sidebar-primary: var(--brand-accent);
     --sidebar-primary-foreground: var(--brand-bg);
-    --sidebar-accent: var(--brand-graphic);
+    --sidebar-accent: color-mix(in oklch, var(--brand-white) 14%, var(--brand-bg));
     --sidebar-accent-foreground: var(--brand-white);
-    --sidebar-border: color-mix(in oklch, var(--brand-graphic) 40%, transparent);
+    --sidebar-border: color-mix(in oklch, var(--brand-white) 12%, transparent);
     --sidebar-ring: var(--brand-accent);
 }
 
 .dark {
     --background: var(--brand-bg);
     --foreground: var(--brand-white);
-    --card: var(--brand-block);
+    --card: color-mix(in oklch, var(--brand-white) 7%, var(--brand-bg));
     --card-foreground: var(--brand-white);
-    --popover: var(--brand-block);
+    --popover: color-mix(in oklch, var(--brand-white) 9%, var(--brand-bg));
     --popover-foreground: var(--brand-white);
     --primary: var(--brand-accent);
     --primary-foreground: var(--brand-bg);
-    --secondary: var(--brand-graphic);
+    --secondary: color-mix(in oklch, var(--brand-white) 12%, var(--brand-bg));
     --secondary-foreground: var(--brand-white);
-    --muted: color-mix(in oklch, var(--brand-block) 55%, var(--brand-bg));
-    --muted-foreground: var(--brand-neutral);
-    --accent: var(--brand-graphic);
+    --muted: color-mix(in oklch, var(--brand-white) 6%, var(--brand-bg));
+    --muted-foreground: color-mix(in oklch, var(--brand-white) 62%, var(--brand-bg));
+    --accent: color-mix(in oklch, var(--brand-white) 14%, var(--brand-bg));
     --accent-foreground: var(--brand-white);
     --destructive: oklch(0.704 0.191 22.216);
     --warning: #fbbf24;
     --success: #34d399;
-    --border: color-mix(in oklch, var(--brand-graphic) 55%, transparent);
-    --input: color-mix(in oklch, var(--brand-graphic) 45%, transparent);
+    --border: color-mix(in oklch, var(--brand-white) 14%, transparent);
+    --input: color-mix(in oklch, var(--brand-white) 18%, transparent);
     --ring: var(--brand-accent);
     --chart-1: var(--brand-accent);
-    --chart-2: var(--brand-graphic);
-    --chart-3: var(--brand-block);
-    --chart-4: var(--brand-neutral);
-    --chart-5: color-mix(in oklch, var(--brand-accent) 50%, var(--brand-graphic));
+    --chart-2: color-mix(in oklch, var(--brand-white) 55%, var(--brand-bg));
+    --chart-3: color-mix(in oklch, var(--brand-white) 30%, var(--brand-bg));
+    --chart-4: color-mix(in oklch, var(--brand-white) 80%, var(--brand-bg));
+    --chart-5: color-mix(in oklch, var(--brand-accent) 45%, var(--brand-white));
     --sidebar: var(--brand-bg);
     --sidebar-foreground: var(--brand-white);
     --sidebar-primary: var(--brand-accent);
     --sidebar-primary-foreground: var(--brand-bg);
-    --sidebar-accent: var(--brand-graphic);
+    --sidebar-accent: color-mix(in oklch, var(--brand-white) 14%, var(--brand-bg));
     --sidebar-accent-foreground: var(--brand-white);
-    --sidebar-border: color-mix(in oklch, var(--brand-graphic) 40%, transparent);
+    --sidebar-border: color-mix(in oklch, var(--brand-white) 12%, transparent);
     --sidebar-ring: var(--brand-accent);
 }
 
