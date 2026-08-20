@@ -44,6 +44,11 @@ async function refreshAccessToken(): Promise<string> {
   return data.access
 }
 
+// A 401 from these means "wrong credentials" or "refresh token is dead" — not
+// "access token expired", so retrying them through the refresh flow makes no
+// sense and would just swallow the real error behind a refresh failure.
+const AUTH_ENDPOINTS = ["/auth/login", "/auth/register", "/auth/refresh"]
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -51,7 +56,9 @@ apiClient.interceptors.response.use(
       | (InternalAxiosRequestConfig & { _retry?: boolean })
       | undefined
 
-    if (error.response?.status !== 401 || !originalRequest || originalRequest._retry) {
+    const isAuthEndpoint = AUTH_ENDPOINTS.some((path) => originalRequest?.url?.includes(path))
+
+    if (error.response?.status !== 401 || !originalRequest || originalRequest._retry || isAuthEndpoint) {
       throw error
     }
 

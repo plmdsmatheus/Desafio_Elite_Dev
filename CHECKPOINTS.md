@@ -275,9 +275,83 @@ telas/features reais, auth context de verdade e identidade visual própria ficam
 
 ## ⬜ Checkpoint 9 — Telas do frontend
 
-Ordem sugerida: auth → navegação/busca de eventos → criação de evento (organizador) →
-reserva + pagamento simulado → "Meus ingressos" com QR (`qrcode.react`) → portaria (câmera via
-`html5-qrcode` + digitação manual).
+Dividido a pedido do usuário: uma tela por vez, com pausa pra personalização entre cada uma. Ordem
+combinada: **fundação** (auth) → login/cadastro → lista de eventos → detalhe do evento →
+reserva+pagamento → meus ingressos (QR) → ingresso compartilhado → painel do organizador →
+criar/editar evento → portaria.
+
+### ✅ 9.1 — Fundação de auth + Login/Cadastro
+
+- **`useAuth()`** (`src/hooks/use-auth.ts`) — decisão de design: em vez de Context+Provider, o
+  usuário logado vive no cache do TanStack Query sob a chave `["me"]`. Todo componente que chama
+  `useAuth()` compartilha o mesmo dado automaticamente (dedupe nativo do React Query), sem precisar
+  envolver a árvore num `<AuthProvider>`. Ao carregar a página, se houver token salvo, busca
+  `GET /api/auth/me` pra restaurar a sessão (token não é confiado no client sem essa checagem); se
+  falhar, limpa o token. Escolhi essa abordagem depois que o `oxlint` acusou dois warnings reais no
+  design inicial com `useEffect`+`useState` manual (`set-state-in-effect` e
+  `only-export-components`) — o redesenho eliminou os dois warnings e o código ficou mais simples.
+- **`src/api/client.ts`**: instância do axios com refresh automático de JWT em 401 — mas
+  excluindo explicitamente os próprios endpoints de auth (`login`/`register`/`refresh`) dessa
+  lógica, porque um 401 *deles* significa "credencial errada", não "sessão expirada" (achei esse
+  bug ao testar de verdade: sem a exclusão, a mensagem de erro real do backend era mascarada por
+  uma tentativa de refresh fadada ao fracasso).
+- **`Layout`** (`src/components/layout.tsx`): header com nav que muda conforme o papel logado
+  (organizador → "Meus eventos", cliente → "Meus ingressos", portaria → "Portaria"), envolve todas
+  as rotas via `<Outlet />`.
+- **`LoginPage`/`RegisterPage`**: formulários controlados (sem `react-hook-form`, mantido simples),
+  cadastro sempre cria cliente (sem seletor de papel — espelha a decisão do backend, com uma nota
+  explicando isso na tela), cadastro loga automaticamente em seguida (reserva não pede duas vezes
+  as mesmas credenciais). Erros da API normalizados por `src/lib/api-error.ts`.
+- **Correção no backend**: `EmailTokenObtainPairSerializer` tinha a mensagem padrão do
+  `django-rest-framework-simplejwt` em inglês ("No active account found...") vazando pra API —
+  sobrescrita para "E-mail ou senha inválidos." (achado durante o teste real do fluxo, não estava
+  nos checkpoints anteriores porque não tínhamos frontend consumindo esse erro ainda).
+- **Verificado de ponta a ponta com Playwright de verdade** (não só build/lint): cadastro → login
+  automático → header mostra e-mail → logout → login manual com as mesmas credenciais → sessão
+  sobrevive a reload de página (prova que o `GET /auth/me` de restauração funciona) → senha errada
+  mostra "E-mail ou senha inválidos." em vermelho. Zero erros de console (fora o 401 esperado do
+  teste de senha errada). Usei o `docker compose up` que o usuário já tinha rodando (backend na
+  porta 8000, frontend na 5173) em vez de subir servidores próprios — bind mount + HMR já refletiam
+  o código novo. Usuários de teste (`_pw_test_*`) removidos do banco depois.
+
+### ✅ 9.1b — Identidade visual (paleta de cores)
+
+Usuário não gostou da paleta cinza monocromática padrão do shadcn e pediu uma paleta própria:
+`#08121A` `#0F2D3A` `#1E6F7D` `#7BC6C9` `#E7F3F2` (petróleo/teal, do quase-preto ao branco-menta).
+
+- Reescrevi `src/index.css`: os 5 tons viram variáveis nomeadas (`--brand-950` a `--brand-50`), e
+  todos os tokens do shadcn (`background`, `primary`, `card`, `border`, `chart-*`, `sidebar-*` etc)
+  são derivados só a partir desses 5 — tons intermediários usam `color-mix()` do CSS (ex.:
+  `color-mix(in oklch, var(--brand-300) 18%, white)`) em vez de inventar cores novas fora da
+  paleta. Funciona tanto no tema claro quanto no escuro (`.dark`).
+- **Claro**: fundo branco-menta, cards brancos, botão primário no teal médio, texto navy escuro.
+- **Escuro**: fundo navy quase-preto, cards no tom petróleo escuro (nível acima do fundo), botão
+  primário no teal claro (contraste alto sobre fundo escuro).
+- **Verificado visualmente com Playwright** nos dois modos (claro e forçando a classe `.dark`) nas
+  telas de login/cadastro, incluindo o estado de erro (vermelho ainda legível nos dois fundos).
+  `npm run build`/`lint` seguem limpos.
+
+### ✅ 9.1c — Ajustes de UX pedidos pelo usuário
+
+- **Espaçamento do card**: menos padding no topo (`pt-8` → `pt-4`/`pt-6`), card mais largo
+  (`max-w-sm` → `max-w-md`).
+- **Mostrar senha**: `src/components/password-input.tsx` — input com ícone de olho (lucide-react)
+  que alterna `type="password"`/`"text"`, usado em login/cadastro (senha e confirmar senha).
+- **Erros por campo, não perto do botão**: `getApiFieldErrors()` em `src/lib/api-error.ts` separa
+  a resposta de erro da API por campo (`{"email": [...]}` → `{email: "..."}`); cada input tem seu
+  próprio slot de erro logo abaixo (`aria-invalid` + borda vermelha do próprio shadcn). No login, o
+  erro de credencial inválida (que não pertence a um campo específico) fica anexado à senha — é o
+  padrão mais comum desse tipo de formulário. Mantive a validação nativa do navegador
+  (`required`/`type=email`) pros casos óbvios, sem `noValidate`.
+- **Estado ativo no header**: troquei `Link` por `NavLink` do react-router — o link da página atual
+  fica com `font-medium text-foreground`, os demais em `text-muted-foreground`.
+- **Bug real de responsividade corrigido**: reproduzi o problema que o usuário descreveu — no
+  header logado, em telas estreitas (320px), o e-mail empurrava o botão "Sair" pra fora da tela
+  (nenhum wrap, sem overflow visível pro usuário). Corrigido com `flex-wrap` no header (nav quebra
+  pra segunda linha se não couber) e ocultando o e-mail abaixo do breakpoint `sm` (não é informação
+  essencial no mobile, o papel + "Sair" já bastam).
+- **Verificado com Playwright** em 3 larguras (1280px, 375px, 320px), logado e deslogado, com
+  screenshot antes/depois confirmando o bug de overflow e a correção.
 
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
