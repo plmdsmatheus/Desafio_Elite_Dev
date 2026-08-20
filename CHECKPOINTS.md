@@ -575,6 +575,53 @@ marca, são convenção de UX — verde/âmbar/vermelho pra disponível/pouco/es
   o ingresso com QR — QR continua com o box branco fixo de propósito (ilegível não pode seguir
   tema). `build`/`lint` limpos, suíte do backend (53 testes) sem regressão (mudança foi só CSS).
 
+### ✅ 9.4d — Feedback do usuário: hover da nav bar + tilt/reflexo nos cards
+
+- **Nav bar**: `navLinkClassName` (`src/components/layout.tsx`) ganhou fundo lima + texto branco
+  no hover (`hover:bg-primary hover:text-white`, com padding/`rounded-md` pra virar uma "pílula").
+  Botão "Sair" (variant outline) recebeu o mesmo hover via `className` na instância (não mexi no
+  `button.tsx` global — `cn()`/`tailwind-merge` já resolve o conflito de utilitários mantendo a
+  última classe, então dava pra sobrescrever só ali sem afetar outros botões outline do site).
+  "Criar conta" deixou de ser um botão preenchido (`variant="default"`) e virou `variant="outline"`
+  com `border-white text-white` — fundo natural do outline já é `bg-background`, que por acaso é a
+  mesma cor do header (o `<header>` não tem bg próprio, herda o da página), então "fundo da cor do
+  navbar" saiu de graça. Hover dos dois vira lima+branco também, consistente com o resto da nav.
+- **Tilt + reflexo nos cards de evento** (`src/components/event-card.tsx`): `onMouseMove` calcula a
+  posição relativa do cursor dentro do card e converte em `rotateX`/`rotateY` (máx. 8°, invertido
+  nos dois eixos pra inclinar "na direção" do mouse) aplicado via `style` inline com
+  `transition: transform 300ms cubic-bezier(...)` — a inércia de seguir o mouse com uma transição
+  curta em vez de aplicar o transform instantaneamente é o que dá a sensação de "peso" pedida.
+  Como o Tailwind v4 já usa as propriedades CSS `translate`/`scale` nativas (não `transform`) pros
+  utilitários `hover:-translate-y-0.5`/`group-hover:scale-105` que já existiam (achado no
+  Checkpoint 9.3b), o `transform` inline com o tilt compõe com eles sem conflito — não precisei
+  reimplementar o lift/zoom em JS. Reflexo: `<div>` absoluta sobre a imagem com
+  `radial-gradient(circle at X% Y%, var(--brand-accent), transparent 60%)` seguindo a mesma posição
+  do cursor, `mix-blend-mode: screen` (some quando funde com fundo escuro, "acende" a cor sobre a
+  imagem) e opacidade indo a 0 no `onMouseLeave`.
+- **Verificado com Playwright**: hover dos 4 elementos da nav (Entrar/Criar conta/Sair/link de
+  papel) com screenshot confirmando lima+branco. Tilt verificado tanto visualmente quanto por
+  `getComputedStyle`/`.style.transform` direto — movendo o mouse pro canto superior-esquerdo e
+  inferior-direito do card e conferindo que o ângulo bate com o esperado (~±7.5° dos 8° máximos,
+  sinal invertido entre os dois cantos) e volta pra `0deg` ao tirar o mouse. Clique no card
+  continua navegando normalmente mesmo com o handler de mousemove ativo (nada de
+  `preventDefault`/`stopPropagation` no meio do caminho). Suíte do backend (53 testes) sem
+  regressão (mudança foi só frontend). `build`/`lint` limpos.
+
+### ✅ 9.4e — Ajuste: hover da nav bar sem "caixa" lima
+
+Usuário achou a caixa de fundo lima do hover (9.4d) chamativa demais — pediu pra trocar por só a
+letra mudando de cor pra lima, sem preenchimento.
+
+- `navLinkClassName`: removido `hover:bg-primary hover:text-white` + o padding/`rounded-md` que
+  existia só pra sustentar a "pílula"; virou só `hover:text-primary`.
+- Botões "Sair" e "Criar conta": removido o hover de fundo/borda lima, mantido só
+  `hover:text-primary` — e `hover:bg-background` explícito pra cancelar o `hover:bg-muted` que o
+  variant `outline` já traz por padrão (senão o botão ainda escurecia de leve no hover, uma "caixa"
+  mais sutil mas ainda uma caixa). Borda do "Criar conta" continua branca fixa, não muda no hover.
+- **Verificado com Playwright**: os 4 pontos de hover da nav (Entrar/Criar conta/Sair/link de
+  papel) com screenshot confirmando que só a cor do texto muda pra lima, sem nenhum fundo/caixa.
+  `build`/`lint` limpos.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção

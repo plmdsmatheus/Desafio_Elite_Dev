@@ -1,4 +1,5 @@
 import { Calendar, MapPin } from "lucide-react"
+import { type MouseEvent, useState } from "react"
 import { Link } from "react-router-dom"
 import { EventThumbnail } from "@/components/event-thumbnail"
 import { Badge } from "@/components/ui/badge"
@@ -25,18 +26,55 @@ function availabilityLabel(level: AvailabilityLevel, available: number): string 
   return `${available} disponíveis`
 }
 
+// Max single-axis rotation for the tilt-toward-cursor effect — enough to read
+// as "weight", not so much it looks like the card is falling over.
+const MAX_TILT_DEG = 8
+
 export function EventCard({ event }: { event: Event }) {
   const level = getAvailabilityLevel(event.tickets_available, event.capacity)
+  const [tilt, setTilt] = useState({ x: 0, y: 0 })
+  const [glare, setGlare] = useState({ x: 50, y: 50, opacity: 0 })
+
+  function handleMouseMove(event: MouseEvent<HTMLAnchorElement>) {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const px = (event.clientX - rect.left) / rect.width
+    const py = (event.clientY - rect.top) / rect.height
+    setTilt({ x: (0.5 - py) * MAX_TILT_DEG * 2, y: (px - 0.5) * MAX_TILT_DEG * 2 })
+    setGlare({ x: px * 100, y: py * 100, opacity: 1 })
+  }
+
+  function handleMouseLeave() {
+    setTilt({ x: 0, y: 0 })
+    setGlare((g) => ({ ...g, opacity: 0 }))
+  }
 
   return (
-    <Link to={`/eventos/${event.id}`} className="group block">
+    <Link
+      to={`/eventos/${event.id}`}
+      className="group block"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        transform: `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+        transition: "transform 300ms cubic-bezier(0.22, 1, 0.36, 1)",
+      }}
+    >
       <Card className="h-full overflow-hidden py-0 transition-all hover:-translate-y-0.5 hover:shadow-lg">
-        <div className="h-36 overflow-hidden sm:h-40">
+        <div className="relative h-36 overflow-hidden sm:h-40">
           <EventThumbnail
             src={event.image_url}
             category={event.category}
             dateTime={event.date_time}
             className="h-full w-full transition-transform duration-300 group-hover:scale-105"
+          />
+          {/* Smoky lime reflection that follows the cursor across the image. */}
+          <div
+            className="pointer-events-none absolute inset-0 transition-opacity duration-300"
+            style={{
+              opacity: glare.opacity * 0.5,
+              background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, var(--brand-accent), transparent 60%)`,
+              mixBlendMode: "screen",
+            }}
           />
         </div>
 

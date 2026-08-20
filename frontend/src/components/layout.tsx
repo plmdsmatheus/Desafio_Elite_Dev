@@ -12,7 +12,7 @@ const ROLE_LINK: Record<UserRole, { to: string; label: string }> = {
 
 const navLinkClassName = ({ isActive }: { isActive: boolean }) =>
   cn(
-    "transition-colors hover:text-foreground",
+    "transition-colors hover:text-primary",
     isActive ? "font-medium text-foreground" : "text-muted-foreground",
   )
 
@@ -40,7 +40,12 @@ export function Layout() {
                   {ROLE_LINK[user.role].label}
                 </NavLink>
                 <span className="hidden text-muted-foreground sm:inline">{user.email}</span>
-                <Button variant="outline" size="sm" onClick={handleLogout}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="hover:bg-background hover:text-primary"
+                >
                   Sair
                 </Button>
               </>
@@ -49,7 +54,12 @@ export function Layout() {
                 <NavLink to="/login" className={navLinkClassName}>
                   Entrar
                 </NavLink>
-                <Button asChild size="sm">
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="border-white text-white hover:bg-background hover:text-primary"
+                >
                   <NavLink to="/cadastro">Criar conta</NavLink>
                 </Button>
               </>
