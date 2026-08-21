@@ -1198,6 +1198,46 @@ criavam eventos com `date_time=timezone.now()` (exatamente "agora"), já inváli
 trocado pra "amanhã", já que a intenção desses testes é concorrência/capacidade, não validade de
 data. Suíte do backend: 94 testes (+8). `build`/`lint` do frontend limpos.
 
+### ✅ 9.11 — Portaria (`/portaria`)
+
+Última tela do fluxo original. Backend já existia por completo desde o esqueleto inicial
+(`GET /gate/events`, `POST /gate/validate`, os 4 resultados `valido`/`invalido`/`ja_utilizado`/
+`evento_errado`, assinatura HMAC do QR) — essa tela foi 100% frontend.
+
+- **Dependência nova**: `html5-qrcode` (leitura de QR pela câmera do navegador). **Achado
+  operacional**: o frontend roda num container Docker com `node_modules` num volume anônimo
+  separado do host (`docker-compose.yml`: `- /app/node_modules`) — `npm install` no host não
+  chega no container rodando. Precisei pedir pro usuário rodar
+  `docker compose exec frontend npm install html5-qrcode` (ou rebuildar a imagem) antes de
+  conseguir testar; sem `docker` CLI dentro do meu próprio sandbox, não tinha como fazer isso
+  sozinho. Fica registrado porque é o tipo de coisa que vai se repetir sempre que uma dependência
+  nova do frontend for adicionada daqui pra frente.
+- `GatePage`: fluxo em dois passos.
+  1. **Escolher evento** (`GateEventPicker`) — lista paginada de eventos publicados
+     (`GET /gate/events`, mesma paginação global de 6), cada linha mostra local/data/vendidos.
+  2. **Validar** (`GateValidationScreen`) — câmera (`QrScanner`, novo componente) lado a lado com
+     input manual de texto (exigência do enunciado: aceitar os dois). Qualquer um dos dois
+     dispara o mesmo `POST /gate/validate`. Resultado aparece num card grande colorido por tipo
+     (verde/vermelho/âmbar/âmbar), com um histórico da sessão embaixo (client-side, não persiste —
+     é só uma conveniência visual pro turno).
+  - `QrScanner`: usa `Html5QrcodeScanner`, pausa a câmera por ~2.5s depois de cada leitura bem
+    sucedida antes de retomar sozinha — evita disparar a mesma leitura repetidamente se o cliente
+    demorar a afastar o celular da câmera.
+  - Texto da própria UI da biblioteca ("Request Camera Permissions" etc.) fica em inglês — não
+    tem hook de i18n exposto no construtor público; decidi não fazer monkey-patch de método
+    estático de uma lib de terceiro só por isso.
+- **Testado com Playwright** (com `--use-fake-device-for-media-stream`, já que o sandbox não tem
+  câmera real — inicialização do widget confirmada sem erros, mas decodificação de QR de verdade
+  não dá pra testar sem uma câmera real ou um vídeo com QR de fato): guarda de acesso (deslogado →
+  login, cliente → home), os 4 resultados de validação com ingressos reais comprados na hora
+  (válido, já utilizado ao tentar de novo, código inválido, evento errado — mostrando pra qual
+  evento o ingresso realmente pertence), histórico da sessão atualizando, "Trocar evento"
+  voltando pro seletor. Mobile (375px) sem overflow. Contas de teste removidas ao final. Suíte do
+  backend sem mudança (94 testes, já passava). `build`/`lint` do frontend limpos.
+
+Com essa tela, as 4 personas do sistema (cliente, organizador, portaria, público sem login) têm
+fluxo completo ponta a ponta.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção
