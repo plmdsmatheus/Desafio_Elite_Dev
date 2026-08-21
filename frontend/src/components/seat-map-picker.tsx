@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { Armchair } from "lucide-react"
 import { getEventSeats } from "@/api/events"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
@@ -64,23 +65,25 @@ export function SeatMapPicker({ eventId, selectedSeatIds, onToggleSeat }: SeatMa
                       disabled={isLocked && !isSelected}
                       onClick={() => onToggleSeat(seat.id)}
                       className={cn(
-                        "flex size-6 shrink-0 items-center justify-center rounded text-[9px] font-medium transition-colors sm:size-7 sm:text-[10px]",
-                        isSelected && "bg-primary text-primary-foreground",
+                        "flex size-6 shrink-0 items-center justify-center rounded transition-colors sm:size-7",
+                        isSelected && "text-primary",
                         !isSelected &&
                           seat.status === "available" &&
-                          "border border-border text-muted-foreground hover:border-primary hover:text-primary",
-                        !isSelected &&
-                          seat.status === "mine" &&
-                          "border border-dashed border-warning text-warning hover:border-primary hover:text-primary",
+                          "text-muted-foreground hover:text-primary",
+                        !isSelected && seat.status === "mine" && "text-warning hover:text-primary",
                         !isSelected &&
                           seat.status === "held" &&
-                          "cursor-not-allowed bg-muted text-muted-foreground/40",
+                          "cursor-not-allowed text-muted-foreground/30",
                         !isSelected &&
                           seat.status === "sold" &&
-                          "cursor-not-allowed bg-muted text-muted-foreground/30 line-through",
+                          "cursor-not-allowed text-muted-foreground/20",
                       )}
                     >
-                      {seat.number}
+                      <Armchair
+                        className="size-full"
+                        strokeWidth={1.5}
+                        fill={isSelected ? "currentColor" : "none"}
+                      />
                     </button>
                   )
                 })}
@@ -92,15 +95,15 @@ export function SeatMapPicker({ eventId, selectedSeatIds, onToggleSeat }: SeatMa
 
       <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="size-3 rounded border border-border" />
+          <Armchair className="size-4 text-muted-foreground" strokeWidth={1.5} />
           Disponível
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-3 rounded bg-primary" />
+          <Armchair className="size-4 text-primary" strokeWidth={1.5} fill="currentColor" />
           Selecionado
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-3 rounded bg-muted" />
+          <Armchair className="size-4 text-muted-foreground/30" strokeWidth={1.5} />
           Ocupado / em escolha por outra pessoa
         </span>
       </div>

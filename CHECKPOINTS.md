@@ -1084,6 +1084,22 @@ ninguém mais está tentando comprar de verdade.
   sozinho, confirmado por uma terceira conta conseguindo reservar o mesmo assento logo em seguida).
 - Suíte do backend: 86 testes (+4). `build`/`lint` do frontend limpos.
 
+### ✅ 9.8d — Ajuste visual: assentos como poltronas (feedback do usuário)
+
+Pedido: "os quadrados não poderiam ser umas poltronas, com o mesmo esquema dos quadrados, ficando
+em verde quando selecionadas."
+
+- `SeatMapPicker`: trocado o quadrado com o número do assento pelo ícone `Armchair` (lucide-react).
+  Mesmo esquema de cores de antes — só que aplicado ao ícone em vez do fundo do quadrado:
+  disponível (contorno cinza), selecionado (poltrona preenchida na cor lima/`text-primary`, via
+  `fill="currentColor"`), "mine" (contorno âmbar), ocupado/em escolha por outra pessoa (cinza
+  apagado). Legenda embaixo do mapa também trocou os quadradinhos de cor por mini poltronas no
+  mesmo esquema.
+- Testado visualmente com Playwright (desktop e mobile 375px) — grade de 150 assentos renderiza
+  limpa, seleção lima bem visível, sem overflow horizontal na página (o mapa mantém seu próprio
+  scroll horizontal interno pra grades maiores). Nenhuma mudança de lógica (hold, polling,
+  concorrência) — só o visual do botão de cada assento.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção
