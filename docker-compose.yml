@@ -27,7 +27,11 @@ services:
       # Inside the Compose network Postgres is reached by service name, not
       # "localhost" — overrides just this one variable from the .env file.
       DATABASE_URL: postgres://postgres:postgres@db:5432/eventos_db
-    # No "command" override — uses the Dockerfile's CMD (migrate + seed_demo_data + runserver).
+    # Overrides the Dockerfile's CMD (which is production-oriented — gunicorn,
+    # no autoreload — for a plain `docker build`/cloud deploy like Render).
+    # Local dev wants the Django dev server instead: autoreload on every save
+    # (the bind mount below), plus DEBUG from .env.
+    command: sh -c "python manage.py migrate && python manage.py seed_demo_data && python manage.py runserver 0.0.0.0:8000"
     volumes:
       - ./backend:/app
     ports:

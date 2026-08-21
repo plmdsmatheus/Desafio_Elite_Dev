@@ -1238,6 +1238,39 @@ data. Suíte do backend: 94 testes (+8). `build`/`lint` do frontend limpos.
 Com essa tela, as 4 personas do sistema (cliente, organizador, portaria, público sem login) têm
 fluxo completo ponta a ponta.
 
+### ✅ 9.12 — Preparação pra deploy grátis (Vercel + Render)
+
+Pedido do usuário: colocar o projeto no ar. Vercel é ótimo pro frontend (SPA estático), mas não
+roda uma API Django com Postgres persistente de verdade — é serverless, sem processo de longa
+duração nem banco embutido. Perguntei ao usuário onde o backend ficaria hospedado; ele escolheu
+**Render** (free tier de Web Service Docker + Postgres gerenciado grátis).
+
+- **Backend** (`backend/Dockerfile`): o `CMD` padrão mudou de `runserver` (dev) pra
+  `migrate && seed_demo_data && collectstatic && gunicorn` — produção de verdade. O **Docker
+  Compose local não perdeu nada**: ganhou um `command:` explícito em `docker-compose.yml`
+  reproduzindo o `runserver` de antes, então o dia a dia local continua idêntico (autoreload,
+  sem precisar de collectstatic a cada save).
+- `gunicorn` + `whitenoise` adicionados como dependências (`poetry add`). `whitenoise` serve os
+  arquivos estáticos direto do processo Django (admin, DRF browsable API, Swagger UI do
+  drf-spectacular-sidecar) — sem isso, essas telas ficariam sem CSS num host de serviço único
+  como o Render free tier, que não tem um servidor de estático separado.
+- Novo endpoint `GET /api/health` (sem autenticação, sem tocar no banco) — path de health check
+  que o Render usa pra saber se o processo subiu.
+- `frontend/vercel.json`: rewrite de SPA (toda rota cai no `index.html`) — sem isso, recarregar a
+  página em `/eventos/5` daria 404 (o Vercel não sabe que é o React Router quem decide a rota).
+- **Testado localmente antes de entregar**: rodei `collectstatic` e o próprio `gunicorn` fora do
+  Docker (ambiente Poetry do host) com `DJANGO_DEBUG=False`, confirmando que `/api/health` e
+  `/api/events/` respondem 200 antes de qualquer deploy de verdade. Suíte completa (94 testes)
+  sem regressão — mudança foi só configuração de deploy, nenhuma lógica de negócio tocada.
+- `DEPLOY.md` (novo, raiz do repo): passo a passo — banco + Web Service no Render (variáveis de
+  ambiente, health check path), projeto no Vercel (root directory, variável
+  `VITE_API_BASE_URL`), o acerto de CORS depois que a URL do Vercel existir de verdade, e as
+  limitações conhecidas do free tier (Render dorme após inatividade, Postgres free expira em 90
+  dias). Gerei uma `DJANGO_SECRET_KEY` nova pra produção — a de dev não deve ser reaproveitada.
+- Nada commitado — só preparei os arquivos. O usuário ainda precisa criar as contas
+  Render/Vercel, conectar o repositório e preencher os valores reais (chaves do Ticketmaster/TMDb
+  já existentes no `.env` local).
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção
