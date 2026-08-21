@@ -1,5 +1,6 @@
 import { QRCodeSVG } from "qrcode.react"
 import { Link } from "react-router-dom"
+import { CancelTicketDialog } from "@/components/cancel-ticket-dialog"
 import { ShareButton } from "@/components/share-button"
 import { TransferTicketDialog } from "@/components/transfer-ticket-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +50,9 @@ export function TicketCard({ ticket }: { ticket: Ticket }) {
             <QRCodeSVG value={ticket.qr_payload} size={140} />
           </div>
           <p className="font-mono text-sm tracking-widest">{ticket.public_code}</p>
+          {ticket.seat_label && (
+            <p className="text-xs text-muted-foreground">Assento {ticket.seat_label}</p>
+          )}
           {ticket.status === "used" && ticket.used_at && (
             <p className="text-xs text-muted-foreground">
               Validado em {formatDateTime(ticket.used_at)}
@@ -58,7 +62,12 @@ export function TicketCard({ ticket }: { ticket: Ticket }) {
 
         <div className="flex flex-wrap gap-2">
           <ShareButton title={event.title} url={ticket.share_url} />
-          {ticket.status === "valid" && <TransferTicketDialog ticket={ticket} />}
+          {ticket.status === "valid" && (
+            <>
+              <TransferTicketDialog ticket={ticket} />
+              <CancelTicketDialog ticket={ticket} />
+            </>
+          )}
         </div>
       </CardContent>
     </Card>

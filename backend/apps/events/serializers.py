@@ -31,6 +31,7 @@ class EventSerializer(serializers.ModelSerializer):
             "capacity",
             "price",
             "status",
+            "has_seat_map",
             "tickets_sold",
             "tickets_available",
             "created_at",
@@ -58,6 +59,7 @@ class EventWriteSerializer(serializers.ModelSerializer):
             "capacity",
             "price",
             "status",
+            "has_seat_map",
         ]
 
     def validate_capacity(self, value):

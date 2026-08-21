@@ -1,5 +1,5 @@
 import { apiClient } from "@/api/client"
-import type { Event, EventCategory, Paginated } from "@/types"
+import type { Event, EventCategory, Paginated, Seat } from "@/types"
 
 export interface EventListParams {
   q?: string
@@ -24,4 +24,8 @@ export function getOrganizerEvents(page: number) {
   return apiClient
     .get<Paginated<Event>>("/organizer/events", { params: { page } })
     .then((res) => res.data)
+}
+
+export function getEventSeats(eventId: string | number) {
+  return apiClient.get<Seat[]>(`/events/${eventId}/seats`).then((res) => res.data)
 }

@@ -61,7 +61,13 @@ class EventListCreateView(generics.ListCreateAPIView):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(organizer=self.request.user)
+        event = serializer.save(organizer=self.request.user)
+        if event.has_seat_map:
+            # Local import: apps.events must not depend on apps.ticketing at
+            # module load time (see Event.tickets_sold for the same reason).
+            from apps.ticketing.seating import generate_seats_for_event
+
+            generate_seats_for_event(event)
 
     def create(self, request, *args, **kwargs):
         # EventWriteSerializer doesn't expose id/tickets_sold/etc — use the read
@@ -108,6 +114,12 @@ class EventDetailView(generics.RetrieveUpdateAPIView):
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
+
+        if serializer.instance.has_seat_map:
+            from apps.ticketing.seating import generate_seats_for_event
+
+            generate_seats_for_event(serializer.instance)
+
         return Response(EventSerializer(serializer.instance).data)
 
 

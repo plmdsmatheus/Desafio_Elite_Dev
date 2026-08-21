@@ -16,3 +16,7 @@ export function transferTicket(ticketId: number, email: string) {
     .post<Ticket>(`/tickets/${ticketId}/transfer`, { email })
     .then((res) => res.data)
 }
+
+export function cancelTicket(ticketId: number) {
+  return apiClient.post<Ticket>(`/tickets/${ticketId}/cancel`).then((res) => res.data)
+}

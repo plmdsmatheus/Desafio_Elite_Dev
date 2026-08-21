@@ -29,6 +29,7 @@ export interface Event {
   capacity: number
   price: string
   status: EventStatus
+  has_seat_map: boolean
   tickets_sold: number
   tickets_available: number
   created_at: string
@@ -44,6 +45,7 @@ export interface Reservation {
   status: ReservationStatus
   total_price: string
   created_at: string
+  seats: string[]
 }
 
 export type TicketStatus = "valid" | "used" | "canceled"
@@ -58,6 +60,17 @@ export interface Ticket {
   created_at: string
   qr_payload: string
   share_url: string
+  seat_label: string | null
+}
+
+export type SeatStatus = "available" | "held" | "mine" | "sold"
+
+export interface Seat {
+  id: number
+  row_label: string
+  number: number
+  label: string
+  status: SeatStatus
 }
 
 export interface PaymentResult {

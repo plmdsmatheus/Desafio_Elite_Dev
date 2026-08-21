@@ -52,3 +52,23 @@ def published_event(organizer):
         price=Decimal("100.00"),
         status=Event.Status.PUBLISHED,
     )
+
+
+@pytest.fixture
+def seat_map_event(organizer):
+    from apps.ticketing.seating import generate_seats_for_event
+
+    event = Event.objects.create(
+        organizer=organizer,
+        title="Sessão com Assentos Marcados",
+        category=Event.Category.MOVIE,
+        venue_name="Cinema Teste",
+        city="São Paulo",
+        date_time=timezone.now() + timedelta(days=30),
+        capacity=12,
+        price=Decimal("50.00"),
+        status=Event.Status.PUBLISHED,
+        has_seat_map=True,
+    )
+    generate_seats_for_event(event, seats_per_row=4)
+    return event

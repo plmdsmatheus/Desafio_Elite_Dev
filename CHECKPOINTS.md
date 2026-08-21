@@ -900,6 +900,190 @@ cadastrado.
   já passava) — essa tela foi só frontend consumindo um endpoint que já existia. `build`/`lint`
   limpos.
 
+### ✅ 9.8 — Funcionalidades opcionais: cancelamento de ingresso + mapa de assentos
+
+Pedido do usuário, antes de seguir para "criar/editar evento":
+1. Cancelamento de ingresso já vendido, devolvendo a vaga ao estoque.
+2. Mapa de assentos em tempo real pra eventos de cinema/teatro, com cuidado pra não deixar duas
+   pessoas reservarem o mesmo lugar ao mesmo tempo.
+
+Antes de começar o mapa de assentos, perguntei ao usuário Polling vs WebSockets (Django Channels)
+pra refletir a ocupação entre usuários diferentes — ele escolheu **polling** (mais simples, sem
+infra nova; a garantia real contra venda duplicada é o lock no banco na hora de confirmar, não a
+leitura).
+
+**1. Cancelamento com devolução ao estoque**
+
+- **Refatoração necessária primeiro**: `Event.tickets_sold` somava `reservation.quantity` das
+  reservas pagas — fixo desde a compra, nunca refletiria um cancelamento parcial (ex: cliente
+  comprou 3, cancela 1). Mudei pra contar `Ticket`s não cancelados de verdade
+  (`apps/events/models.py`, `with_sold_counts()` e a property `tickets_sold`) — assim
+  "devolver ao estoque" é só virar o status do ticket, sem contador separado pra reconciliar.
+- `TicketCancelView` (`POST /api/tickets/<id>/cancel`, `IsCustomer`): dono só cancela o próprio
+  ingresso (404 senão), só se `status == valid` (409 se já usado/cancelado) e só se o evento ainda
+  não aconteceu (409 se `date_time` no passado). Se o ingresso tinha assento vinculado, libera o
+  assento na mesma transação.
+- Frontend: `CancelTicketDialog` (novo, mesmo padrão do `TransferTicketDialog` — dialog de
+  confirmação, já que é uma ação difícil de reverter), botão vermelho "Cancelar ingresso" no
+  `ticket-card.tsx` ao lado de "Enviar para outra pessoa", só pra ingressos `valid`. Invalida a
+  query `my-tickets` ao confirmar — o ingresso cancelado aparece na seção "Histórico" já existente
+  (Checkpoint 9.6), dimmed junto com os usados.
+- 7 testes novos (`test_cancel.py`): cancela e devolve estoque, some da lista de válidos, não
+  cancela ingresso de outra pessoa, não cancela duas vezes, não cancela ingresso usado, não cancela
+  evento que já passou, e um teste de regressão específico confirmando que o estoque devolvido é
+  **imediatamente comprável por outra pessoa** (a motivação inteira da refatoração).
+
+**2. Mapa de assentos com trava de concorrência real**
+
+- **Modelo novo** (`apps/ticketing/models.py`): `Seat` (event, row_label, number, `reservation`
+  nullable — quem segura o assento agora, `held_until` — expiração da reserva não paga).
+  `Event.has_seat_map` (bool) liga o modo assento-específico em vez de quantidade solta.
+  `Ticket.seat` (nullable) linka o ingresso ao assento quando aplicável.
+- **`apps/ticketing/seating.py`** (novo):
+  - `generate_seats_for_event(event)`: gera a grade de assentos a partir da capacidade (10 por
+    fileira, A, B, C... depois AA, AB... pra mais de 26 fileiras). Idempotente — chamado
+    automaticamente ao criar/editar um evento com `has_seat_map=True` (`apps/events/views.py`).
+  - `hold_seats(event, seat_ids, reservation)`: a trava de concorrência de verdade. Tranca as linhas
+    de `Seat` (`select_for_update`, ordenado por id pra não dar deadlock entre pedidos concorrentes
+    com assentos sobrepostos), confere se cada um está livre — sem ticket válido e sem hold ainda
+    vivo de outra reserva pendente (`held_until > now`; um hold vencido é tratado como livre não
+    importa o que o FK antigo ainda diga — não existe Celery nesse projeto pra limpar isso, então a
+    expiração é toda "preguiçosa": cada checagem de disponibilidade já trata `held_until` vencido
+    como vaga livre). Se algum assento já estiver ocupado, tudo é desfeito e sobe `SeatsUnavailable`
+    — a view converte isso num 409 (não 400: a seleção do cliente ficou desatualizada, não é
+    inválida) pro frontend saber que precisa recarregar o mapa e deixar escolher de novo.
+  - **Bug real pego pelo teste de concorrência com threads de verdade**: o primeiro `hold_seats`
+    usava `select_related("ticket", "reservation")` junto com o `select_for_update` — só que o
+    Postgres só re-busca a linha travada (`FOR UPDATE`) depois de esperar o lock; colunas vindas de
+    um JOIN na mesma consulta podem continuar refletindo o snapshot de ANTES da espera. Resultado:
+    a thread que esperava via `reservation_id` corretamente atualizado, mas `seat.reservation` (o
+    objeto do JOIN) vinha `None` — achava que o assento tava livre quando não estava. Corrigido
+    buscando `Ticket`/`Reservation` em consultas separadas, depois de confirmar o lock — aí sim
+    sempre veem o dado committado mais recente. Sem esse teste com threads reais (só
+    `django.test.Client` sequencial) essa race nunca teria aparecido.
+  - `ReservationCreateView`: pra eventos com `has_seat_map`, chama `hold_seats` em vez de criar a
+    reserva direto; `ReservationCreateSerializer` ganhou `seat_ids` (obrigatório e sem duplicata
+    quando `has_seat_map`, `quantity` vira `len(seat_ids)`). `ReservationSerializer` ganhou `seats`
+    (lista de labels) pro frontend mostrar "Assentos A1, A2" sem consulta extra.
+  - `ReservationPayView`: se a reserva tem assentos, confere que ainda estão todos com ela antes de
+    cobrar — se o hold venceu e alguém pegou o assento nesse meio tempo, recusa com 409 em vez de
+    silenciosamente gerar um ingresso sem assento pra essa reserva órfã. Aprovado: cria um `Ticket`
+    por assento, já linkado. Recusado: libera os holds na hora (não faz o próximo cliente esperar os
+    10 minutos inteiros).
+  - `GET /api/events/<id>/seats` (`EventSeatMapView`, `IsCustomer`, **sem paginação** — importante,
+    a paginação global de 6 quebraria qualquer mapa com mais de 6 assentos): devolve todo assento
+    com status computado (`available`/`held`/`mine`/`sold`) pro usuário que pediu — "mine" só pro
+    dono do hold vivo, "held" pra qualquer outro.
+  - 11 testes funcionais (`test_seat_map.py`) + 2 testes com threads de verdade
+    (`test_concurrency.py`, a mesma classe/estilo dos testes de pagamento concorrente já existentes):
+    dois clientes disputando o mesmo assento (só um ganha), dez clientes disputando o mesmo pacote
+    de 3 assentos (só um ganha, tudo ou nada).
+
+- **Seed**: 4 eventos reais marcados com `has_seat_map=True` — escolhidos por terem **zero vendas
+  já feitas** nesta sessão (senão o mapa nasceria "tudo livre" enquanto `tickets_sold` já mostraria
+  vendido, uma inconsistência visível): "Vingadores: Doutor Destino" (150 poltronas, cinema),
+  "Batman" (110, cinema), "Wicked (Touring)" (150, teatro), "Dear Evan Hansen" (90, teatro) — dois
+  de cada categoria, de propósito, pra provar que funciona pros dois.
+
+- **Frontend**:
+  - `SeatMapPicker` (novo): busca `GET /events/<id>/seats` com `refetchInterval: 4000` (polling,
+    conforme escolhido) enquanto o componente está montado. Grade por fileira, assento colorido por
+    status (disponível/selecionado/ocupado), clique alterna seleção local até o limite de
+    `MAX_QUANTITY_PER_RESERVATION`. Container com `overflow-x-auto` próprio pra grades grandes não
+    estourarem a página no mobile.
+  - `CheckoutPage.tsx`: passo de "quantidade" bifurca — evento com `has_seat_map` mostra o
+    `SeatMapPicker` em vez do `QuantityStepper`, `quantity` efetiva vira `selectedSeatIds.length`.
+    Em caso de 409 (assento ocupado por outra pessoa entre a seleção e a confirmação), limpa a
+    seleção e invalida a query do mapa pra recarregar o estado real. Passo de pagamento mostra
+    "Assentos A1, A2" (vindo de `reservation.seats`) em vez de "N ingresso(s)" quando aplicável.
+  - `purchase-panel.tsx`: evento com `has_seat_map` esconde o seletor de quantidade (não faz sentido
+    escolher quantidade antes de escolher assento específico) e troca o texto do botão pra "Escolher
+    assentos".
+  - `ticket-card.tsx`: mostra "Assento A1" quando o ingresso tem assento vinculado.
+  - **Testado com Playwright contra o backend real**: fluxo completo (detalhe do evento → escolher 2
+    assentos → confirmar → pagar → ver assentos em "Meus ingressos"), teste de conflito real com
+    dois navegadores/contas simultâneos disputando o mesmo assento (confirmei que um ganha com 201 e
+    o outro recebe a mensagem de erro certa e tem a seleção limpa), mobile (375px, grade de 10
+    colunas coube sem exigir scroll horizontal). Contas de teste removidas ao final — a exclusão em
+    cascata (`on_delete`) devolveu os assentos ao estoque automaticamente, confirmando que as regras
+    de integridade do banco também se comportam certo nesse caminho.
+
+Suíte do backend: 79 testes (era 59 no checkpoint anterior — +7 cancelamento, +11 mapa de
+assentos funcional, +2 concorrência real com threads). `build`/`lint` do frontend limpos.
+
+### ✅ 9.8b — Bugfix reportado pelo usuário: assento "preso" pro próprio comprador que desistiu
+
+Relato do usuário: "abro 2 navegadores em contas diferentes, reservo 1 assento no mapa, no outro
+navegador ele atualiza e não me permite comprar (esperado). Porém, se eu voltar pra tela inicial
+antes de pagar e tentar selecionar o mesmo assento, ele fica ocupado pro comprador que saiu
+também" — ou seja, nem o próprio dono do hold abandonado conseguia escolher o assento de novo.
+
+- **Causa raiz**: `hold_seats()` só sabia travar assentos livres ou rejeitar os já ocupados — não
+  distinguia "ocupado por mim mesmo, numa tentativa anterior que abandonei" de "ocupado por outra
+  pessoa". Ao voltar pro checkout e escolher de novo (mesmo assento ou outro), a reserva pendente
+  antiga continuava viva (nada a cancelava) e o novo pedido de hold via os assentos como
+  legitimamente ocupados — pelo próprio usuário.
+- **Correção** (`apps/ticketing/seating.py`): nova função `release_stale_holds_for_customer(event,
+  customer)`, chamada em `ReservationCreateView` antes de todo `hold_seats()` pra eventos com mapa
+  de assentos — cancela (`status=canceled`) qualquer reserva `pending` anterior do mesmo cliente
+  pro mesmo evento e libera os assentos dela. Assim, sair do checkout sem pagar e voltar — mesmo
+  pro mesmo assento — sempre funciona, sem precisar esperar os 10 minutos do hold expirar sozinho.
+  Escopado por cliente: o hold de outra pessoa nunca é tocado (testado explicitamente).
+- Also corrigido um resíduo visual: assentos com status `"mine"` (o próprio hold ainda ativo, visto
+  no mapa de outra aba/sessão) não tinham nenhum estilo — não caíam em nenhum dos `if` de cor no
+  `SeatMapPicker`, então apareciam sem destaque e ambíguos. Ganharam borda tracejada
+  (`border-dashed border-warning`) e tooltip explicando que selecionar de novo libera a reserva
+  anterior.
+- 3 testes novos (`test_seat_map.py`): reescolher o mesmo assento abandonado funciona (reserva
+  antiga vira `canceled`), a limpeza só afeta as próprias reservas do cliente (a de outra pessoa
+  continua intacta), e pagar pela reserva abandonada depois de escolher de novo é rejeitado (409 —
+  ela não é mais `pending`).
+- **Reproduzi o cenário exato do relato com Playwright** (dois navegadores/contas reais): confirmei
+  visualmente que reescolher o mesmo assento agora funciona sem erro pro comprador original, com o
+  assento mostrando a borda tracejada de aviso antes da nova seleção.
+- Suíte do backend: 82 testes (+3). `build`/`lint` do frontend limpos.
+
+### ✅ 9.8c — Gap reportado pelo usuário: assento preso 10 min quando o comprador simplesmente desiste
+
+Usuário testou um terceiro cenário na prática e confirmou o bug: cliente 1 escolhe um assento e
+avança pro pagamento (assento reservado — esperado); se a internet cair, continua reservado pra ele
+(esperado, sem como evitar); se ele escolher outro assento, libera o anterior (checkpoint 9.8b). Mas
+se ele simplesmente **desistir do evento** — não faz mais nada, só sai da tela — nada nunca libera
+aquele assento, e o cliente 2 fica esperando os 10 minutos inteiros do hold por um assento que
+ninguém mais está tentando comprar de verdade.
+
+- **Causa raiz**: até aqui, só existiam liberações *implícitas* — pagar (some com o hold), recusar
+  (libera na hora), ou escolher de novo (`release_stale_holds_for_customer`, 9.8b). Não existia
+  nenhum jeito de dizer "desisto dessa reserva" sem fazer mais nada — o hold só mesmo expirava
+  sozinho depois dos 10 minutos.
+- **Correção backend**: `release_reservation_hold(reservation)` (`apps/ticketing/seating.py`) —
+  cancela uma reserva ainda `pending` e libera os assentos dela; no-op idempotente se ela já não
+  está mais pendente (paga/recusada/já liberada), pensado pra ser chamado "fire-and-forget" sem o
+  chamador checar o estado antes. Novo endpoint `POST /api/reservations/<id>/release`
+  (`ReservationReleaseView`, `IsCustomer`, só o dono) expõe isso.
+- **Correção frontend** (`CheckoutPage.tsx`), duas pontas complementares:
+  1. Botão explícito **"Desistir e escolher outro assento"** no passo de pagamento (só aparece pra
+     eventos com mapa de assentos) — chama o release e volta pro mapa na hora.
+  2. **Liberação automática ao sair da tela**: um cleanup de `useEffect` que dispara
+     `releaseReservation` se o componente desmonta com uma reserva ainda não paga em aberto — cobre
+     exatamente o "desisti e saí sem fazer mais nada" (clicar em outro link do site, navegar pra
+     outra rota do SPA). Usa refs (`reservationRef`/`settledRef`) em vez de state puro porque o
+     cleanup do efeito só roda uma vez, no unmount, e fecharia sobre o estado inicial (obsoleto) se
+     dependesse só de closures — os refs são atualizados no exato momento de cada transição de
+     estado (reserva criada, pagamento resolvido, desistência manual).
+  - Limitação deliberada, documentada: isso só cobre navegação dentro do próprio app (SPA). Fechar a
+    aba ou cair a conexão de verdade não dispara o cleanup — mas o usuário já validou que esse caso
+    (internet caindo) pode continuar reservado mesmo, então não há necessidade de resolver isso com
+    `sendBeacon`/`unload` (que também não conseguiriam levar o header de autenticação JWT).
+- 4 testes novos (`test_seat_map.py`, `TestReservationRelease`): libera e o assento fica
+  imediatamente comprável por outra pessoa, escopado ao dono (404 pra outra conta), no-op inofensivo
+  numa reserva já paga (não desfaz a venda), e no-op inofensivo numa reserva de ingresso comum sem
+  assento (só cancela, sem side-effect).
+- **Testado com Playwright**: os dois caminhos — clicar em "Desistir" (assento libera na hora) e
+  simplesmente navegar pra outra página do site sem clicar em nada (o cleanup no unmount libera
+  sozinho, confirmado por uma terceira conta conseguindo reservar o mesmo assento logo em seguida).
+- Suíte do backend: 86 testes (+4). `build`/`lint` do frontend limpos.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção

@@ -59,6 +59,40 @@ class Reservation(models.Model):
         return f"Reserva #{self.pk} — {self.event.title} x{self.quantity} ({self.status})"
 
 
+class Seat(models.Model):
+    """A specific, non-fungible seat for events with assigned seating
+    (`Event.has_seat_map`). `reservation` is the current holder: set the
+    moment a customer picks the seat (not only once paid) so two customers
+    can never both believe they hold the same seat — see ReservationCreateView.
+    `held_until` bounds an unpaid hold; a hold past that timestamp is treated
+    as free by every availability check even though the FK is only cleared
+    lazily (on the next hold attempt, cancellation, or decline) — there's no
+    background sweep, consistent with this project's "reserva pendente não
+    trava estoque" stance for quantity-based reservations."""
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="seats")
+    row_label = models.CharField(max_length=4)
+    number = models.PositiveIntegerField()
+
+    reservation = models.ForeignKey(
+        Reservation, null=True, blank=True, on_delete=models.SET_NULL, related_name="held_seats"
+    )
+    held_until = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["row_label", "number"]
+        constraints = [
+            models.UniqueConstraint(fields=["event", "row_label", "number"], name="unique_event_seat")
+        ]
+
+    def __str__(self):
+        return f"{self.row_label}{self.number} — {self.event.title}"
+
+    @property
+    def label(self) -> str:
+        return f"{self.row_label}{self.number}"
+
+
 class Payment(models.Model):
     Status = PaymentStatus
 
@@ -87,6 +121,10 @@ class Ticket(models.Model):
         on_delete=models.CASCADE,
         related_name="tickets",
         limit_choices_to={"role": "customer"},
+    )
+    # Only set for events with a seat map — general admission tickets have no seat.
+    seat = models.OneToOneField(
+        Seat, null=True, blank=True, on_delete=models.SET_NULL, related_name="ticket"
     )
 
     public_code = models.CharField(

@@ -62,6 +62,13 @@ export function PurchasePanel({ event, user, quantity, onQuantityChange }: Purch
         </p>
       )
     }
+    if (event.has_seat_map) {
+      return (
+        <Button asChild className="w-full">
+          <Link to={`/checkout/${event.id}`}>{compact ? "Assentos" : "Escolher assentos"}</Link>
+        </Button>
+      )
+    }
     return (
       <Button asChild className="w-full">
         <Link to={`/checkout/${event.id}?qty=${quantity}`}>{compact ? "Reservar" : "Reservar ingressos"}</Link>
@@ -83,14 +90,14 @@ export function PurchasePanel({ event, user, quantity, onQuantityChange }: Purch
             {availabilityText(event.tickets_available)}
           </p>
 
-          {canReserve && (
+          {canReserve && !event.has_seat_map && (
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Quantidade</span>
               <QuantityStepper value={quantity} max={maxQuantity} onChange={onQuantityChange} />
             </div>
           )}
 
-          {canReserve && quantity > 1 && (
+          {canReserve && !event.has_seat_map && quantity > 1 && (
             <div className="flex items-center justify-between border-t pt-3 text-sm">
               <span className="text-muted-foreground">Total</span>
               <span className="font-semibold">{formatCurrency(total)}</span>
@@ -110,12 +117,12 @@ export function PurchasePanel({ event, user, quantity, onQuantityChange }: Purch
               {availabilityTextCompact(event.tickets_available)}
             </p>
             <p className="truncate text-lg font-bold text-primary">
-              {formatCurrency(canReserve ? total : event.price)}
+              {formatCurrency(canReserve && !event.has_seat_map ? total : event.price)}
             </p>
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {canReserve && (
+            {canReserve && !event.has_seat_map && (
               <QuantityStepper value={quantity} max={maxQuantity} onChange={onQuantityChange} compact />
             )}
             <div className="w-24">{buildCta(true)}</div>

@@ -10,7 +10,13 @@ from apps.accounts.permissions import IsCustomer, IsGate
 from apps.events.models import Event
 from apps.events.serializers import EventSerializer
 
-from .models import Payment, Reservation, Ticket
+from .models import Payment, Reservation, Seat, Ticket
+from .seating import (
+    SeatsUnavailable,
+    hold_seats,
+    release_reservation_hold,
+    release_stale_holds_for_customer,
+)
 from .serializers import (
     GateValidateResultSerializer,
     GateValidateSerializer,
@@ -18,6 +24,7 @@ from .serializers import (
     PaymentResultSerializer,
     ReservationCreateSerializer,
     ReservationSerializer,
+    SeatSerializer,
     TicketSerializer,
     TicketTransferSerializer,
 )
@@ -32,16 +39,72 @@ from .signing import unsign_ticket_code
     )
 )
 class ReservationCreateView(generics.CreateAPIView):
+    """For seat-map events, seat locking (and the Reservation save that goes
+    with it) happens here rather than in the serializer, so a stale/taken
+    seat selection can answer 409 instead of DRF's blanket 400 for validation
+    errors — see apps.ticketing.seating.hold_seats."""
+
     permission_classes = [IsCustomer]
     serializer_class = ReservationCreateSerializer
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        reservation = serializer.save()
+        event = serializer.validated_data["event"]
+        quantity = serializer.validated_data["quantity"]
+        seat_ids = serializer.validated_data.get("seat_ids")
+
+        reservation = Reservation(
+            event=event,
+            customer=request.user,
+            quantity=quantity,
+            total_price=event.price * quantity,
+        )
+
+        if event.has_seat_map:
+            # Backing out of checkout without paying leaves the old
+            # reservation dangling as PENDING with its seats still held —
+            # release those first so a fresh pick (even of the very same
+            # seat) never looks "taken" by the customer's own abandoned hold.
+            release_stale_holds_for_customer(event, request.user)
+            try:
+                hold_seats(event, seat_ids, reservation)
+            except SeatsUnavailable as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        else:
+            reservation.save()
+
         return Response(
             ReservationSerializer(reservation).data, status=status.HTTP_201_CREATED
         )
+
+
+class ReservationReleaseView(APIView):
+    """Lets the customer explicitly give up a still-unpaid reservation —
+    "I changed my mind" / "I'm leaving this page" — freeing any held seats
+    right away instead of making the next buyer wait out the 10-minute hold.
+    The frontend fires this from a couple of places: an explicit "cancelar
+    reserva" action, and a best-effort call when the checkout page unmounts
+    with an unpaid reservation still open. Always answers 200 — silently a
+    no-op if the reservation is no longer pending (already paid, declined, or
+    already released) — since this is meant to be called fire-and-forget
+    without the caller checking state first."""
+
+    permission_classes = [IsCustomer]
+
+    @extend_schema(
+        tags=["reservations"],
+        summary="Desistir de uma reserva pendente (libera assentos na hora)",
+        responses=ReservationSerializer,
+    )
+    def post(self, request, pk):
+        with transaction.atomic():
+            reservation = get_object_or_404(
+                Reservation.objects.select_for_update(), pk=pk, customer=request.user
+            )
+            release_reservation_hold(reservation)
+
+        return Response(ReservationSerializer(reservation).data)
 
 
 class ReservationPayView(APIView):
@@ -85,6 +148,22 @@ class ReservationPayView(APIView):
 
             event = Event.objects.select_for_update().get(pk=reservation.event_id)
 
+            held_seats = []
+            if event.has_seat_map:
+                held_seats = list(Seat.objects.select_for_update().filter(reservation=reservation))
+                if len(held_seats) != reservation.quantity:
+                    # The 10-minute hold expired and (some of) the seats were
+                    # picked up by someone else before this payment landed.
+                    reservation.status = Reservation.Status.DECLINED
+                    reservation.save(update_fields=["status", "updated_at"])
+                    return Response(
+                        {
+                            "detail": "A reserva dos assentos expirou antes do pagamento. "
+                            "Escolha os assentos novamente."
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
             if approved and event.tickets_sold + reservation.quantity > event.capacity:
                 approved = False
 
@@ -101,11 +180,23 @@ class ReservationPayView(APIView):
 
             tickets = []
             if approved:
-                tickets = [
-                    Ticket(reservation=reservation, event=event, owner=request.user)
-                    for _ in range(reservation.quantity)
-                ]
+                if held_seats:
+                    tickets = [
+                        Ticket(reservation=reservation, event=event, owner=request.user, seat=seat)
+                        for seat in held_seats
+                    ]
+                else:
+                    tickets = [
+                        Ticket(reservation=reservation, event=event, owner=request.user)
+                        for _ in range(reservation.quantity)
+                    ]
                 Ticket.objects.bulk_create(tickets)
+            elif held_seats:
+                # Declined — release the holds immediately instead of making
+                # someone else wait out the remainder of the 10-minute window.
+                Seat.objects.filter(id__in=[seat.id for seat in held_seats]).update(
+                    reservation=None, held_until=None
+                )
 
         reservation.refresh_from_db()
         return Response(
@@ -118,6 +209,26 @@ class ReservationPayView(APIView):
         )
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["events"],
+        summary="Mapa de assentos do evento",
+        description="Só para eventos com has_seat_map=True. Sem paginação — o frontend faz "
+        "polling deste endpoint a cada poucos segundos enquanto o cliente escolhe os assentos; "
+        "a garantia real contra venda duplicada é o lock em hold_seats na criação da reserva, "
+        "não esta leitura.",
+    )
+)
+class EventSeatMapView(generics.ListAPIView):
+    permission_classes = [IsCustomer]
+    serializer_class = SeatSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        event = get_object_or_404(Event, pk=self.kwargs["event_id"])
+        return event.seats.select_related("ticket", "reservation")
+
+
 @extend_schema_view(get=extend_schema(tags=["tickets"], summary="Meus ingressos"))
 class MyTicketsView(generics.ListAPIView):
     permission_classes = [IsCustomer]
@@ -125,6 +236,53 @@ class MyTicketsView(generics.ListAPIView):
 
     def get_queryset(self):
         return Ticket.objects.filter(owner=self.request.user).select_related("event")
+
+
+class TicketCancelView(APIView):
+    """Cancels a single ticket and returns it to stock. Event.tickets_sold is
+    derived live from non-canceled Ticket rows (see Event.with_sold_counts),
+    so flipping the status here is the entire "return to stock" — no separate
+    counter to reconcile. If the ticket is tied to a seat hold (seat maps),
+    the seat is released in the same transaction so it becomes selectable
+    again immediately."""
+
+    permission_classes = [IsCustomer]
+
+    @extend_schema(
+        tags=["tickets"],
+        summary="Cancelar ingresso (devolve ao estoque)",
+        responses=TicketSerializer,
+    )
+    def post(self, request, pk):
+        with transaction.atomic():
+            ticket = get_object_or_404(
+                # `of=("self",)`: FOR UPDATE can't apply across the LEFT OUTER
+                # JOIN to the nullable `seat` relation — restrict the lock to
+                # the ticket row itself.
+                Ticket.objects.select_for_update(of=("self",)).select_related("seat"),
+                pk=pk,
+                owner=request.user,
+            )
+
+            if ticket.status != Ticket.Status.VALID:
+                return Response(
+                    {"detail": "Só é possível cancelar ingressos válidos."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            if ticket.event.date_time <= timezone.now():
+                return Response(
+                    {"detail": "Não é possível cancelar o ingresso de um evento que já aconteceu."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            ticket.status = Ticket.Status.CANCELED
+            ticket.save(update_fields=["status"])
+
+            if ticket.seat_id:
+                Seat.objects.filter(pk=ticket.seat_id).update(reservation=None, held_until=None)
+
+        return Response(TicketSerializer(ticket, context={"request": request}).data)
 
 
 class TicketTransferView(APIView):

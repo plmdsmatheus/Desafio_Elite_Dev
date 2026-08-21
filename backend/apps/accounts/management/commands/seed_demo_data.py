@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.events.models import Event
 from apps.ticketing.models import Payment, Reservation, Ticket
+from apps.ticketing.seating import generate_seats_for_event
 
 DEMO_PASSWORD = "demo1234"
 
@@ -36,6 +37,7 @@ EXTRA_REAL_EVENTS = [
         days_from_now=15,
         capacity=150,
         price=Decimal("180.00"),
+        has_seat_map=True,
     ),
     dict(
         title="Chicago - The Musical",
@@ -104,6 +106,7 @@ EXTRA_REAL_EVENTS = [
         days_from_now=50,
         capacity=90,
         price=Decimal("160.00"),
+        has_seat_map=True,
     ),
     dict(
         title="SIX the Musical",
@@ -138,6 +141,7 @@ EXTRA_REAL_EVENTS = [
         days_from_now=12,
         capacity=150,
         price=Decimal("32.00"),
+        has_seat_map=True,
     ),
     dict(
         title="Divertida Mente 2",
@@ -191,6 +195,7 @@ EXTRA_REAL_EVENTS = [
         days_from_now=28,
         capacity=110,
         price=Decimal("26.00"),
+        has_seat_map=True,
     ),
 ]
 
@@ -330,12 +335,22 @@ class Command(BaseCommand):
             data["days_from_now"] = days_from_now
             data["title"] = title
 
+        # Generates the Seat grid for whichever events above got
+        # has_seat_map=True — picked deliberately among events with zero
+        # pre-existing sales, so the freshly generated grid can never be
+        # inconsistent with tickets that were sold before assigned seating
+        # existed. generate_seats_for_event is idempotent, safe to call again
+        # on every `docker compose up`.
+        seat_map_events = list(Event.objects.filter(organizer=organizer, has_seat_map=True))
+        for event in seat_map_events:
+            generate_seats_for_event(event)
+
         valid_ticket, used_ticket = self._seed_tickets(event_show, customer1)
 
         self.stdout.write(self.style.SUCCESS("\nDados de teste semeados com sucesso.\n"))
         self._print_summary(
             organizer, customer1, customer2, gate, event_show, event_movie, event_small,
-            valid_ticket, used_ticket,
+            valid_ticket, used_ticket, seat_map_events,
         )
 
     def _upsert_event(self, organizer, old_titles, title, defaults):
@@ -398,7 +413,7 @@ class Command(BaseCommand):
 
     def _print_summary(
         self, organizer, customer1, customer2, gate, event_show, event_movie, event_small,
-        valid_ticket, used_ticket,
+        valid_ticket, used_ticket, seat_map_events,
     ):
         lines = [
             "Credenciais de teste (senha igual pra todo mundo):",
@@ -414,6 +429,9 @@ class Command(BaseCommand):
             f"(capacidade {event_small.capacity}, boa pra testar a trava de concorrência)",
             f"  + {len(EXTRA_REAL_EVENTS)} eventos reais (Ticketmaster/TMDb) pra testar "
             "carrossel e paginação — veja a listagem pública.",
+            "",
+            "Eventos com mapa de assentos (cinema/teatro):",
+            *[f"  #{e.id}  {e.title} — {e.capacity} assentos" for e in seat_map_events],
             "",
             f"Ingresso já validado (pra testar 'já_utilizado' direto): {used_ticket.public_code}",
             f"Ingresso ainda válido (pra testar a validação na portaria): {valid_ticket.public_code} "

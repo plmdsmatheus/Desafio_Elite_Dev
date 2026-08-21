@@ -1,10 +1,11 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Calendar, CheckCircle2, MapPin, XCircle } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom"
 import { getEvent } from "@/api/events"
-import { createReservation, payReservation } from "@/api/reservations"
+import { createReservation, payReservation, releaseReservation } from "@/api/reservations"
 import { QuantityStepper } from "@/components/quantity-stepper"
+import { SeatMapPicker } from "@/components/seat-map-picker"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -136,8 +137,10 @@ function StepIndicator({ current }: { current: Step }) {
 }
 
 function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantity: number }) {
+  const queryClient = useQueryClient()
   const [step, setStep] = useState<Step>("quantity")
   const [quantity, setQuantity] = useState(initialQuantity)
+  const [selectedSeatIds, setSelectedSeatIds] = useState<number[]>([])
   const [reservation, setReservation] = useState<Reservation | null>(null)
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null)
 
@@ -151,18 +154,59 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
   const [paymentError, setPaymentError] = useState("")
   const [isPaying, setIsPaying] = useState(false)
 
+  // Mirrors `reservation` / "has this reservation reached a final outcome
+  // yet" for the unmount cleanup below — a ref because that cleanup only
+  // runs once, on unmount, and would otherwise close over stale state from
+  // whichever render it was defined in.
+  const reservationRef = useRef<Reservation | null>(null)
+  const settledRef = useRef(false)
+
+  useEffect(() => {
+    return () => {
+      // The customer navigated away (gave up on the event, went back home,
+      // clicked another nav link) with an unpaid reservation still open —
+      // release it right away instead of making the next buyer wait out the
+      // 10-minute hold for seats nobody is still trying to buy. Best-effort:
+      // this can't fire on a hard tab close/refresh, only in-app navigation.
+      const pending = reservationRef.current
+      if (pending && !settledRef.current) {
+        releaseReservation(pending.id).catch(() => {})
+      }
+    }
+  }, [])
+
   const maxQuantity = Math.max(Math.min(event.tickets_available, MAX_QUANTITY_PER_RESERVATION), 1)
-  const total = quantity * Number(event.price)
+  const effectiveQuantity = event.has_seat_map ? selectedSeatIds.length : quantity
+  const total = effectiveQuantity * Number(event.price)
+
+  function handleToggleSeat(seatId: number) {
+    setSelectedSeatIds((prev) => {
+      if (prev.includes(seatId)) return prev.filter((id) => id !== seatId)
+      if (prev.length >= maxQuantity) return prev
+      return [...prev, seatId]
+    })
+  }
 
   async function handleConfirmReservation() {
     setReservationError("")
     setIsReserving(true)
     try {
-      const created = await createReservation({ event: event.id, quantity })
+      const created = event.has_seat_map
+        ? await createReservation({ event: event.id, seat_ids: selectedSeatIds })
+        : await createReservation({ event: event.id, quantity })
+      settledRef.current = false
+      reservationRef.current = created
       setReservation(created)
       setStep("payment")
     } catch (err) {
       setReservationError(getApiErrorMessage(err, "Não foi possível criar a reserva."))
+      if (event.has_seat_map) {
+        // The chosen seat(s) were taken by someone else in the meantime —
+        // clear the stale selection and let the next poll show what's
+        // actually still free.
+        setSelectedSeatIds([])
+        queryClient.invalidateQueries({ queryKey: ["event-seats", event.id] })
+      }
     } finally {
       setIsReserving(false)
     }
@@ -180,6 +224,10 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
         expiry: expiry || undefined,
         cvv: cvv || undefined,
       })
+      // Settled either way: approved needs no release (it's sold now), and
+      // declined already released its own seats server-side — either way
+      // there's nothing left for the unmount cleanup to do.
+      settledRef.current = true
       setPaymentResult(result)
       setStep("result")
     } catch (err) {
@@ -190,6 +238,8 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
   }
 
   function handleRetry() {
+    reservationRef.current = null
+    settledRef.current = false
     setReservation(null)
     setPaymentResult(null)
     setPaymentError("")
@@ -197,7 +247,31 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
     setCardName("")
     setExpiry("")
     setCvv("")
+    setSelectedSeatIds([])
     setStep("quantity")
+  }
+
+  /** Explicit "I changed my mind" — unlike handleRetry (used after a decline,
+   * where the seats are already released server-side), this fires while the
+   * reservation is still pending and holding seats, so it has to release
+   * them itself. */
+  async function handleCancelReservation() {
+    if (reservation) {
+      releaseReservation(reservation.id).catch(() => {})
+    }
+    reservationRef.current = null
+    settledRef.current = false
+    setReservation(null)
+    setPaymentError("")
+    setCardNumber("")
+    setCardName("")
+    setExpiry("")
+    setCvv("")
+    setSelectedSeatIds([])
+    setStep("quantity")
+    if (event.has_seat_map) {
+      queryClient.invalidateQueries({ queryKey: ["event-seats", event.id] })
+    }
   }
 
   return (
@@ -222,10 +296,23 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
               </p>
             </div>
 
-            <div className="flex items-center justify-between border-t pt-4">
-              <span className="text-sm font-medium">Quantidade</span>
-              <QuantityStepper value={quantity} max={maxQuantity} onChange={setQuantity} />
-            </div>
+            {event.has_seat_map ? (
+              <div className="flex flex-col gap-2 border-t pt-4">
+                <span className="text-sm font-medium">
+                  Escolha seus assentos ({selectedSeatIds.length}/{maxQuantity})
+                </span>
+                <SeatMapPicker
+                  eventId={event.id}
+                  selectedSeatIds={selectedSeatIds}
+                  onToggleSeat={handleToggleSeat}
+                />
+              </div>
+            ) : (
+              <div className="flex items-center justify-between border-t pt-4">
+                <span className="text-sm font-medium">Quantidade</span>
+                <QuantityStepper value={quantity} max={maxQuantity} onChange={setQuantity} />
+              </div>
+            )}
 
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>Preço unitário</span>
@@ -239,7 +326,11 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
 
             {reservationError && <p className="text-sm text-destructive">{reservationError}</p>}
 
-            <Button onClick={handleConfirmReservation} disabled={isReserving} className="w-full">
+            <Button
+              onClick={handleConfirmReservation}
+              disabled={isReserving || effectiveQuantity === 0}
+              className="w-full"
+            >
               {isReserving ? "Reservando..." : "Confirmar reserva"}
             </Button>
           </CardContent>
@@ -251,7 +342,10 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
           <CardHeader>
             <CardTitle>Pagamento</CardTitle>
             <CardDescription>
-              {quantity} ingresso(s) · {formatCurrency(total)}
+              {reservation && reservation.seats.length > 0
+                ? `Assentos ${reservation.seats.join(", ")}`
+                : `${effectiveQuantity} ingresso(s)`}{" "}
+              · {formatCurrency(total)}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -313,6 +407,18 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
               <Button type="submit" disabled={isPaying} className="w-full">
                 {isPaying ? "Processando..." : `Pagar ${formatCurrency(total)}`}
               </Button>
+
+              {event.has_seat_map && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={isPaying}
+                  onClick={handleCancelReservation}
+                  className="w-full text-muted-foreground"
+                >
+                  Desistir e escolher outro assento
+                </Button>
+              )}
             </form>
           </CardContent>
         </Card>
