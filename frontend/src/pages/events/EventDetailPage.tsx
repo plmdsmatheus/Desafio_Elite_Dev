@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { ArrowLeft, ArrowUpRight, Calendar, Check, MapPin, Share2 } from "lucide-react"
+import { ArrowLeft, Calendar, Check, MapPin, Share2 } from "lucide-react"
 import { useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { getEvent } from "@/api/events"
@@ -14,9 +14,12 @@ import { formatDateTime } from "@/lib/format"
 import { CATEGORY_BADGE_CLASS, CATEGORY_LABEL } from "@/lib/labels"
 import type { Event, User } from "@/types"
 
-function mapsUrl(event: { venue_name: string; address: string; city: string }): string {
+// Keyless embed (no Google API key/billing needed) — the officially
+// documented Maps Embed API requires a key, but this free-text `output=embed`
+// form works immediately and is enough for "show roughly where this is".
+function mapsEmbedUrl(event: { venue_name: string; address: string; city: string }): string {
   const query = [event.venue_name, event.address, event.city].filter(Boolean).join(", ")
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+  return `https://www.google.com/maps?q=${encodeURIComponent(query)}&output=embed`
 }
 
 function ShareButton({ title }: { title: string }) {
@@ -138,25 +141,6 @@ function EventDetailContent({ event, user }: { event: Event; user: User | null }
             {formatDateTime(event.date_time)}
           </p>
 
-          <div className="flex flex-col gap-1.5 pt-2">
-            <h2 className="text-lg font-medium">Local</h2>
-            <p className="font-medium">{event.venue_name}</p>
-            <p className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="size-4 shrink-0" />
-              {event.address ? `${event.address} — ` : ""}
-              {event.city}
-            </p>
-            <a
-              href={mapsUrl(event)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex w-fit items-center gap-1 text-sm text-primary hover:underline"
-            >
-              Ver no mapa
-              <ArrowUpRight className="size-3.5" />
-            </a>
-          </div>
-
           {event.description && (
             <div className="flex flex-col gap-2 pt-2">
               <h2 className="text-lg font-medium">Sobre o evento</h2>
@@ -173,6 +157,25 @@ function EventDetailContent({ event, user }: { event: Event; user: User | null }
               </p>
             </div>
           )}
+
+          <div className="flex flex-col gap-1.5 pt-2">
+            <h2 className="text-lg font-medium">Local</h2>
+            <p className="font-medium">{event.venue_name}</p>
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <MapPin className="size-4 shrink-0" />
+              {event.address ? `${event.address} — ` : ""}
+              {event.city}
+            </p>
+            <div className="mt-2 aspect-video w-full overflow-hidden rounded-xl border">
+              <iframe
+                src={mapsEmbedUrl(event)}
+                title={`Mapa de ${event.venue_name}`}
+                className="h-full w-full"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            </div>
+          </div>
         </div>
 
         <PurchasePanel event={event} user={user} quantity={quantity} onQuantityChange={setQuantity} />

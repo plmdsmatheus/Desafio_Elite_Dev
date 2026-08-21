@@ -45,6 +45,8 @@ export function EventListPage() {
   }
 
   const hasActiveFilters = Object.values(filters).some(Boolean)
+  const availableEvents = data ? data.results.filter((event) => event.tickets_available > 0) : []
+  const soldOutEvents = data ? data.results.filter((event) => event.tickets_available === 0) : []
 
   return (
     <div className="flex flex-col gap-6">
@@ -130,12 +132,35 @@ export function EventListPage() {
       ) : (
         <>
           {page === 1 ? (
-            <EventCarousel events={data.results} />
-          ) : (
+            availableEvents.length > 0 ? (
+              <EventCarousel events={availableEvents} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Todos os eventos desta página estão esgotados — veja abaixo.
+              </p>
+            )
+          ) : availableEvents.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {data.results.map((event) => (
+              {availableEvents.map((event) => (
                 <EventCard key={event.id} event={event} />
               ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Nenhum ingresso disponível nesta página — veja os esgotados abaixo.
+            </p>
+          )}
+
+          {soldOutEvents.length > 0 && (
+            <div className="flex flex-col gap-3 border-t pt-6">
+              <h2 className="text-sm font-medium text-muted-foreground">
+                Esgotados ({soldOutEvents.length})
+              </h2>
+              <div className="grid grid-cols-2 gap-3 opacity-60 sm:grid-cols-3 lg:grid-cols-4">
+                {soldOutEvents.map((event) => (
+                  <EventCard key={event.id} event={event} />
+                ))}
+              </div>
             </div>
           )}
 

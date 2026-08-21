@@ -666,6 +666,134 @@ letra mudando de cor pra lima, sem preenchimento.
   (53 testes) e `spectacular --fail-on-warn` seguem passando (nenhuma mudança no backend nesta
   etapa). `build`/`lint` do frontend limpos.
 
+### ✅ 9.5b — 4 melhorias reportadas pelo usuário testando de verdade
+
+Usuário testou o app rodando (a mesma instância compartilhada que uso pra verificar) e reportou 4
+problemas reais, incluindo ter comprado os 60 ingressos de um evento de propósito pra testar o
+farol de disponibilidade — o que deixou 2 dos 3 eventos semeados esgotados de verdade no banco
+(ficou assim de propósito, não resetei sem perguntar — ver nota no final).
+
+- **Cards desbalanceados** (`event-card.tsx`): o problema não era a altura externa do card (grid e
+  carrossel já esticam os itens da mesma linha pra altura igual via `align-items: stretch` padrão
+  do CSS) — era o *conteúdo interno* não alinhar: o nome do local não tinha truncamento, então um
+  nome longo empurrava o rodapé (preço/disponibilidade) pra baixo de forma diferente em cada card
+  da mesma linha. Corrigido com `min-h-11` no título (reserva a altura de 2 linhas mesmo pra
+  títulos de 1 linha), `line-clamp-1` no nome do local, `flex-1` no `CardContent` e `mt-auto` no
+  rodapé (gruda no fim do card, não importa quanto texto tem acima).
+  **Bug real pego no meio do teste**: a primeira tentativa colocou `line-clamp-1` direto no mesmo
+  `<p>` que já tinha `flex items-center gap-1.5` — `line-clamp` precisa de `display: -webkit-box`,
+  que o `flex` no mesmo elemento sobrescreve (mesma especificidade CSS, quem "ganha" depende da
+  ordem de geração do Tailwind, não da ordem das classes no JSX) — o truncamento simplesmente não
+  acontecia, o texto ainda quebrava em 2-3 linhas. Corrigido movendo o `line-clamp-1` pra um
+  `<span>` interno, deixando o `<p>` só com o `flex` (ícone + texto lado a lado).
+- **Farol de disponibilidade nunca ficava amarelo** (`lib/availability.ts`): o corte antigo era
+  15% da capacidade — pra um evento de 60, isso só ativa com ≤9 restantes; comprando de 10 em 10
+  (60→50→...→10→0), a marca de 10 restantes (10/60≈16,7%) sempre ficava *acima* do corte, pulando
+  direto de verde pra vermelho. Pior: pra um evento de capacidade 5 (o que o seed usa de propósito
+  pra demonstrar concorrência), `5 × 0,15 = 0,75` — o "amarelo" matematicamente nunca era alcançável
+  pra esse evento, só verde→vermelho. Trocado pra `available <= Math.max(capacity * 0.2, 3)` — 20%
+  com piso de 3 unidades. Cobre os dois casos: evento de 60 mostra amarelo a partir de 12 restantes
+  (pega o 10 do teste do usuário), evento de 5 mostra amarelo a partir de 3 restantes.
+- **Google Maps embutido + reordenação do detalhe do evento** (`EventDetailPage.tsx`): terceira
+  API externa do projeto (além de Ticketmaster/TMDb) — decisão consciente com o usuário: **embed
+  sem chave** (`google.com/maps?q=...&output=embed`), não a "Maps Embed API" oficial com chave —
+  funciona na hora, sem precisar criar projeto/chave no Google Cloud como fizemos pras outras duas.
+  Ordem das seções mudou pra título → data/hora → sobre → organizador → **Local por último**, com
+  o texto do endereço + link "Ver no mapa" + o iframe do mapa embutido (`aspect-video`, cantos
+  arredondados iguais ao banner do evento, `loading="lazy"`). Continua sem precisar de nenhum campo
+  novo no backend — usa os mesmos `venue_name`/`address`/`city` que o link externo já usava.
+- **Eventos esgotados sem destaque na home** (`EventListPage.tsx`): `data.results` (a página atual,
+  já vinda paginada do backend) agora é dividido no client em `availableEvents`/`soldOutEvents`
+  (`tickets_available > 0` vs `=== 0`) — sem mudança nenhuma no backend, a paginação
+  (`data.count`/`next`/`previous`) continua vindo do servidor igual, o split é só de apresentação.
+  Carrossel (página 1) e grid (página 2+) agora só mostram os disponíveis; os esgotados caem numa
+  seção "Esgotados (N)" abaixo, com grid mais denso (`grid-cols-2` a `grid-cols-4`, mais compacto
+  que o `grid-cols-1` a `grid-cols-3` principal) e `opacity-60` no bloco inteiro — menos destaque
+  sem precisar mexer no `EventCard` em si (ele já mostra "Esgotado" em vermelho sozinho). Caso
+  borda coberto: se a página inteira ficar só com esgotados, não renderiza um carrossel vazio
+  (quebraria visualmente) — mostra um aviso de texto em vez disso.
+- **Verificado com Playwright contra o backend real**: os 2 eventos que o próprio usuário esgotou
+  testando (capacidade 60 e capacidade 5) validaram a seção "Esgotados" organicamente, sem precisar
+  fabricar dados pra esse item. Pra validar o alinhamento dos cards, criei 3 eventos temporários com
+  título/local de tamanhos bem diferentes — confirmado por medição de coordenadas (`boundingBox`)
+  que a linha de preço fica exatamente na mesma posição Y em todos, mesmo com conteúdo de cima
+  desigual. Pra validar o amarelo, criei eventos temporários replicando os dois cenários exatos
+  (capacidade 60 com 10 restantes, capacidade 5 com 3 restantes) e confirmei a cor computada
+  (`rgb(251, 191, 36)` = `--warning`) nos dois. Mapa testado com endereço real (mostrou a
+  localização correta do Allianz Parque) e em mobile (375px, responsivo). Todos os dados de teste
+  temporários removidos depois. Suíte do backend (53 testes) sem regressão — nenhuma mudança no
+  backend nesta rodada. `build`/`lint` do frontend limpos.
+- **Pendência avisada, não resolvida sozinha**: os eventos "Sessão Especial: Ecos do Amanhã"
+  (capacidade 60) e "Noite Acústica — Casa Pequena" (capacidade 5) ficaram esgotados de verdade no
+  banco por causa do teste manual do usuário — só resta "Turnê Nacional 2026" disponível pra
+  demonstração. Não resetei sozinho porque são reservas/tickets reais gerados pelo usuário, não
+  lixo de teste meu; perguntar antes de descartar.
+
+### ✅ 9.5c — Seed com eventos reais (imagens de verdade das APIs externas)
+
+Pedido do usuário: em vez das URLs de imagem inventadas do seed original (que sempre caíam no
+placeholder — ver Checkpoint 9.3), buscar dados de verdade nas duas APIs externas.
+
+- Confirmei que este sandbox passou a ter acesso à internet de verdade (não tinha nos checkpoints
+  anteriores) e busquei ao vivo: `Ticketmaster: "Hamilton"` (peça real da Broadway em turnê) e
+  `TMDb: "Duna: Parte Dois"` — título, imagem, sinopse (TMDb já vem em pt-BR) e, no caso do show,
+  local/endereço vieram direto da resposta real da API, não inventados.
+  `seed_demo_data.py`: "Turnê Nacional 2026" → **"Hamilton"** (imagem real do musical, local "The
+  National Theatre" em Washington) e "Sessão Especial: Ecos do Amanhã" → **"Duna: Parte Dois"**
+  (pôster e sinopse reais do TMDb). O evento pequeno (capacidade 5, pra demo de concorrência) e o
+  rascunho continuam sem imagem — nunca foram o problema, já caem no placeholder por design.
+- **Bug real pego antes de rodar**: a primeira versão usava `title` como chave do
+  `update_or_create` — como o título mudou, isso criaria um evento **novo** duplicado em vez de
+  atualizar o existente, deixando o registro antigo (com ingressos já vendidos, inclusive os que o
+  próprio usuário comprou testando o farol de disponibilidade) órfão no banco. Corrigido com um
+  helper `_upsert_event()` que procura primeiro pelo título antigo (`old_titles=[...]`) e renomeia
+  no lugar — preserva o ID e tudo que já apontava pra ele (reservas, tickets, o `public_code` que
+  o Checkpoint 9.2 usa pra demonstrar o QR). Rodar de novo depois de já renomeado cai no caminho
+  normal do `update_or_create` (idempotência restaurada).
+- **Bloqueio real no meio do trabalho**: o Postgres/Docker Compose do usuário caiu entre uma
+  verificação e outra desta sessão — sem `docker` nem Postgres neste sandbox pra contornar. Validei
+  o que dava sem banco (sintaxe, `manage.py check`, as URLs de imagem retornando 200 via curl) e
+  avisei o usuário em vez de inventar que tinha rodado. Ele confirmou que tinha derrubado o serviço
+  de propósito e subiu de novo.
+- **Rodado e verificado de verdade contra o Postgres real** assim que voltou: os dois eventos
+  mantiveram o mesmo ID (#5 e #6) — confirma que o rename-in-place funcionou, sem duplicar nada; os
+  `public_code` dos tickets de demonstração continuam os mesmos de antes da mudança. Conferido
+  visualmente com Playwright: foto real do elenco de Hamilton no card/carrossel e no banner do
+  detalhe, mapa embutido geocodificando certinho pro "National Theatre DC" em Washington; pôster
+  real de Duna: Parte Dois aparecendo até na seção "Esgotados" (o evento continua esgotado de
+  propósito — não mexi nos tickets/reservas já vendidos sem que o usuário pedisse). Suíte do
+  backend (53 testes) passando depois do reseed.
+
+### ✅ 9.5d — Mais 10 eventos reais no seed (volume pra testar carrossel + paginação)
+
+Pedido do usuário: com só 1-3 eventos publicados, não dava pra testar de verdade o carrossel
+passando de página nem a paginação (`PAGE_SIZE=6`, precisa de 7+ pra ter uma página 2).
+
+- Busquei ao vivo mais 6 shows reais no Ticketmaster (`Wicked`, `Chicago - The Musical`, `STOMP`,
+  `Blue Man Group`, `Dear Evan Hansen`, `SIX the Musical`) e 4 filmes reais no TMDb (`Vingadores:
+  Doutor Destino`, `Divertida Mente 2`, `Coringa: Delírio a Dois`, `Batman`) — mesmo processo do
+  Checkpoint 9.5c: título/imagem/sinopse/local (quando o provider sugere) vêm da resposta real da
+  API, conferido campo a campo antes de colar no seed. Validei as 12 URLs de imagem do arquivo
+  inteiro (as 10 novas + Hamilton + Duna) retornando 200 antes de rodar contra o banco.
+  `EXTRA_REAL_EVENTS`: lista de dicts no módulo (não 10 blocos repetidos de `update_or_create`) +
+  um loop em `handle()` — mais fácil de manter/auditar que duplicar a mesma estrutura 10 vezes.
+  Filmes ganharam cinemas brasileiros variados (São Paulo, Belo Horizonte, Curitiba, Salvador —
+  TMDb nunca sugere local, é sempre o organizador que digita) pra não repetir a mesma cidade do
+  Rio de Janeiro que "Duna: Parte Dois" já usa.
+- **Detalhe correto na implementação**: como o loop usa `data.pop("days_from_now")` e
+  `data.pop("title")` pra montar o `defaults=` sem misturar campos que não existem no model
+  (`Event` não tem campo `days_from_now`), e `EXTRA_REAL_EVENTS` é uma constante de módulo (só
+  criada uma vez, mutada por referência) — sem devolver as chaves poppadas, uma segunda chamada de
+  `handle()` no mesmo processo Python quebraria (chave já removida). Botei as chaves de volta no
+  dict depois do `update_or_create` de cada item, então o comando continua seguro de rodar
+  múltiplas vezes (mesmo padrão de idempotência do resto do arquivo).
+- **Verificado contra o Postgres real**: rodei 2x seguidas — segunda vez não duplicou nada (13
+  publicados + 1 rascunho nas duas vezes, mesmos IDs). Testado com Playwright: página 1 mostra o
+  carrossel com pôsteres/fotos reais (Vingadores, Wicked, Divertida Mente), passando de slide
+  suavemente; página 2 e página 3 (grid) confirmam os 13 eventos espalhados corretamente pelas 3
+  páginas — exatamente o volume que faltava pra testar a paginação de ponta a ponta. Suíte do
+  backend (53 testes) passando.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção

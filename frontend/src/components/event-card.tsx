@@ -85,20 +85,22 @@ export function EventCard({ event }: { event: Event }) {
         </div>
 
         <CardHeader className="pt-2">
-          <CardTitle className="line-clamp-2">{event.title}</CardTitle>
+          <CardTitle className="line-clamp-2 min-h-11">{event.title}</CardTitle>
         </CardHeader>
 
-        <CardContent className="flex flex-col gap-1.5 pb-4 text-sm text-muted-foreground">
+        <CardContent className="flex flex-1 flex-col gap-1.5 pb-4 text-sm text-muted-foreground">
           <p className="flex items-center gap-1.5">
             <MapPin className="size-3.5 shrink-0" />
-            {event.venue_name}, {event.city}
+            <span className="line-clamp-1">
+              {event.venue_name}, {event.city}
+            </span>
           </p>
           <p className="flex items-center gap-1.5">
             <Calendar className="size-3.5 shrink-0" />
             {formatDateShort(event.date_time)}
           </p>
 
-          <div className="mt-2 flex items-end justify-between">
+          <div className="mt-auto flex items-end justify-between pt-2">
             <span className="text-lg font-bold text-primary">{formatCurrency(event.price)}</span>
             <span
               className={cn(
