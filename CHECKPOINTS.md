@@ -830,6 +830,49 @@ passando de página nem a paginação (`PAGE_SIZE=6`, precisa de 7+ pra ter uma 
   horizontal, QR grande o suficiente pra ler). Suíte do backend (53 testes) sem regressão — mudança
   foi só frontend. `build`/`lint` limpos.
 
+### ✅ 9.6b — Feedback do usuário: transferir ingresso para outra pessoa cadastrada
+
+Pedido: no ingresso compartilhado, "no lugar de ser o link do QR code, poderia ser enviar o
+ingresso para outra pessoa do site + o link do QR code tbm" — ou seja, manter o link/QR já
+existente e **adicionar** a opção de transferir a posse do ingresso pra outro cliente já
+cadastrado.
+
+- **Backend** (`apps/ticketing`):
+  - `TicketTransferSerializer` (`serializers.py`): recebe só `email`; `validate_email` já resolve
+    pro objeto `User` (levanta erro se for o próprio dono, ou se não existir um `customer`
+    cadastrado com esse e-mail) — assim a view só troca o `owner` sem repetir a busca.
+  - `TicketTransferView` (`views.py`, `POST /api/tickets/<id>/transfer`, `IsCustomer`): busca o
+    ticket filtrando por `owner=request.user` (dono errado → 404, não 403 — não revela se o
+    ingresso existe), recusa transferir ingresso `used`/`canceled` (409), troca o `owner` e devolve
+    o `TicketSerializer` atualizado.
+  - Deliberadamente **não** gera novo `share_slug`/`public_code` na transferência — o ingresso
+    continua sendo o mesmo registro, só muda de dono; o link de compartilhamento antigo continua
+    funcionando (era público mesmo antes, `PublicTicketView` não checa dono).
+  - 6 testes novos (`tests/test_transfer.py`): transferência válida, some da lista do remetente e
+    aparece na do destinatário, não transfere ingresso de outra pessoa (404), rejeita e-mail não
+    cadastrado (400) e transferência pra si mesmo (400), rejeita ingresso já validado na portaria
+    (409). Suíte completa: 59 testes, sem regressão.
+
+- **Frontend**:
+  - Componente shadcn `Dialog` instalado (`npx shadcn add dialog`) — não existia nenhum modal na
+    base ainda.
+  - `src/api/tickets.ts`: `transferTicket(ticketId, email)` → `POST /tickets/{id}/transfer`.
+  - `src/components/transfer-ticket-dialog.tsx`: botão "Enviar para outra pessoa" que abre um
+    dialog com campo de e-mail; em caso de sucesso mostra confirmação e invalida a query
+    `["my-tickets"]` (React Query) pra sumir da lista sem precisar recarregar a página; erros usam
+    o mesmo `getApiErrorMessage` já usado no checkout, então tanto o 400 (e-mail inválido/próprio
+    dono) quanto o 409 (ingresso já usado) aparecem com a mensagem certa embaixo do campo.
+  - `ticket-card.tsx`: os dois botões agora ficam lado a lado (`Compartilhar` + `Enviar para outra
+    pessoa`), com o segundo só aparecendo pra ingressos com status `valid` (não faz sentido
+    transferir um ingresso já utilizado ou cancelado).
+  - **Testado com Playwright contra o backend real**: registrei duas contas de cliente
+    descartáveis (remetente/destinatário), remetente comprou um ingresso de verdade, transferiu
+    pelo dialog — confirmei visualmente que o ingresso some da lista do remetente e aparece na do
+    destinatário (com os mesmos dois botões disponíveis pra ele repassar de novo se quiser).
+    Testei os dois casos de erro (e-mail não cadastrado, transferir pra si mesmo) e as mensagens
+    aparecem certinho dentro do dialog. Contas de teste removidas ao final (`_pw_test_*`, cascata
+    apagou reserva/pagamento/ingresso junto). `build`/`lint` limpos.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção

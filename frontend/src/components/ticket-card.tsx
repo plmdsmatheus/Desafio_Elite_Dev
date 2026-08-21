@@ -1,6 +1,7 @@
 import { QRCodeSVG } from "qrcode.react"
 import { Link } from "react-router-dom"
 import { ShareButton } from "@/components/share-button"
+import { TransferTicketDialog } from "@/components/transfer-ticket-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { formatDateTime } from "@/lib/format"
@@ -55,7 +56,10 @@ export function TicketCard({ ticket }: { ticket: Ticket }) {
           )}
         </div>
 
-        <ShareButton title={event.title} url={ticket.share_url} />
+        <div className="flex flex-wrap gap-2">
+          <ShareButton title={event.title} url={ticket.share_url} />
+          {ticket.status === "valid" && <TransferTicketDialog ticket={ticket} />}
+        </div>
       </CardContent>
     </Card>
   )

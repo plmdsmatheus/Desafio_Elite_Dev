@@ -19,6 +19,7 @@ from .serializers import (
     ReservationCreateSerializer,
     ReservationSerializer,
     TicketSerializer,
+    TicketTransferSerializer,
 )
 from .signing import unsign_ticket_code
 
@@ -124,6 +125,38 @@ class MyTicketsView(generics.ListAPIView):
 
     def get_queryset(self):
         return Ticket.objects.filter(owner=self.request.user).select_related("event")
+
+
+class TicketTransferView(APIView):
+    """Reassigns a ticket to another customer already registered on the site.
+    Only the current owner can transfer it, and only while it's still valid —
+    once used/canceled, ownership no longer matters for the gate."""
+
+    permission_classes = [IsCustomer]
+
+    @extend_schema(
+        tags=["tickets"],
+        summary="Enviar ingresso para outro cliente cadastrado",
+        request=TicketTransferSerializer,
+        responses=TicketSerializer,
+    )
+    def post(self, request, pk):
+        ticket = get_object_or_404(Ticket, pk=pk, owner=request.user)
+
+        if ticket.status != Ticket.Status.VALID:
+            return Response(
+                {"detail": "Só é possível transferir ingressos válidos."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        serializer = TicketTransferSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        recipient = serializer.validated_data["email"]
+
+        ticket.owner = recipient
+        ticket.save(update_fields=["owner"])
+
+        return Response(TicketSerializer(ticket, context={"request": request}).data)
 
 
 @extend_schema_view(

@@ -10,3 +10,9 @@ export function getMyTickets(page: number) {
     .get<Paginated<Ticket>>("/tickets/mine", { params: { page } })
     .then((res) => res.data)
 }
+
+export function transferTicket(ticketId: number, email: string) {
+  return apiClient
+    .post<Ticket>(`/tickets/${ticketId}/transfer`, { email })
+    .then((res) => res.data)
+}

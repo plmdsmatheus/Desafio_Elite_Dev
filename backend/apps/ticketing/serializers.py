@@ -1,10 +1,13 @@
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from apps.events.serializers import EventSerializer
 
 from .models import Reservation, Ticket
 from .signing import sign_ticket_code
+
+User = get_user_model()
 
 
 class ReservationCreateSerializer(serializers.ModelSerializer):
@@ -94,6 +97,22 @@ class TicketSerializer(serializers.ModelSerializer):
 
     def get_share_url(self, obj) -> str:
         return f"{settings.FRONTEND_BASE_URL}/t/{obj.share_slug}"
+
+
+class TicketTransferSerializer(serializers.Serializer):
+    email = serializers.EmailField(help_text="E-mail de um cliente já cadastrado na plataforma.")
+
+    def validate_email(self, value):
+        requester = self.context["request"].user
+        if value.strip().lower() == requester.email.lower():
+            raise serializers.ValidationError("Você já é o dono deste ingresso.")
+
+        recipient = User.objects.filter(email__iexact=value, role=User.Role.CUSTOMER).first()
+        if recipient is None:
+            raise serializers.ValidationError(
+                "Não encontramos um cliente cadastrado com esse e-mail."
+            )
+        return recipient
 
 
 class GateValidateSerializer(serializers.Serializer):
