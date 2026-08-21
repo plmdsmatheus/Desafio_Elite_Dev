@@ -61,9 +61,9 @@ export function TicketCard({ ticket }: { ticket: Ticket }) {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <ShareButton title={event.title} url={ticket.share_url} />
           {ticket.status === "valid" && (
             <>
+              <ShareButton title={event.title} url={ticket.share_url} />
               <TransferTicketDialog ticket={ticket} />
               <CancelTicketDialog ticket={ticket} />
             </>

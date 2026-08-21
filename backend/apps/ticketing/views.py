@@ -13,6 +13,7 @@ from apps.events.serializers import EventSerializer
 from .models import Payment, Reservation, Seat, Ticket
 from .seating import (
     SeatsUnavailable,
+    cancel_ticket_and_release_seat,
     hold_seats,
     release_reservation_hold,
     release_stale_holds_for_customer,
@@ -282,11 +283,7 @@ class TicketCancelView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            ticket.status = Ticket.Status.CANCELED
-            ticket.save(update_fields=["status"])
-
-            if ticket.seat_id:
-                Seat.objects.filter(pk=ticket.seat_id).update(reservation=None, held_until=None)
+            cancel_ticket_and_release_seat(ticket)
 
         return Response(TicketSerializer(ticket, context={"request": request}).data)
 

@@ -75,6 +75,37 @@ def release_reservation_hold(reservation):
     reservation.save(update_fields=["status", "updated_at"])
 
 
+def cancel_ticket_and_release_seat(ticket):
+    """Cancels a single still-valid ticket and, if it holds a seat, fully
+    detaches it — clearing both the seat's own hold state AND the ticket's
+    own `seat` FK. Clearing only the seat isn't enough: `Ticket.seat` is a
+    one-to-one column backed by a database-level unique constraint, so a
+    canceled ticket that still points at a seat permanently occupies that
+    seat's one and only slot — a future ticket for the same seat would fail
+    to insert with a duplicate-key error (this was a real bug: canceling a
+    batch of seat tickets left every one of those seats unsellable forever).
+    Caller is responsible for any surrounding transaction/locking."""
+    seat_id = ticket.seat_id
+    ticket.status = Ticket.Status.CANCELED
+    ticket.seat = None
+    ticket.save(update_fields=["status", "seat"])
+    if seat_id:
+        Seat.objects.filter(pk=seat_id).update(reservation=None, held_until=None)
+
+
+def cancel_valid_tickets_for_event(event):
+    """Bulk version of cancel_ticket_and_release_seat, for when an entire
+    event gets canceled — same reasoning: a still-valid ticket's `seat` FK
+    must be cleared, not just the seat's own hold state, or that seat can
+    never be sold again."""
+    with transaction.atomic():
+        valid_tickets = Ticket.objects.filter(event=event, status=Ticket.Status.VALID)
+        seat_ids = list(valid_tickets.exclude(seat_id=None).values_list("seat_id", flat=True))
+        valid_tickets.update(status=Ticket.Status.CANCELED, seat=None)
+        if seat_ids:
+            Seat.objects.filter(pk__in=seat_ids).update(reservation=None, held_until=None)
+
+
 def hold_seats(event, seat_ids, reservation):
     """Locks `seat_ids` for `reservation` (an unsaved Reservation instance)
     and saves it — all inside one transaction. Seats are select_for_update
