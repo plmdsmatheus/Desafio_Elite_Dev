@@ -8,6 +8,7 @@ class EventSerializer(serializers.ModelSerializer):
 
     tickets_sold = serializers.ReadOnlyField()
     tickets_available = serializers.ReadOnlyField()
+    effective_status = serializers.ReadOnlyField()
     # Display name only — never the organizer's e-mail (see EventSerializer
     # history: organizer_email was removed for leaking PII on a public endpoint).
     organizer_name = serializers.CharField(source="organizer.first_name", read_only=True)
@@ -31,6 +32,7 @@ class EventSerializer(serializers.ModelSerializer):
             "capacity",
             "price",
             "status",
+            "effective_status",
             "has_seat_map",
             "tickets_sold",
             "tickets_available",

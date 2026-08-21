@@ -20,3 +20,11 @@ export function formatDateShort(iso: string): string {
 export function formatCurrency(value: string | number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value))
 }
+
+/** Converts an ISO datetime to the value an `<input type="datetime-local">`
+ * expects ("YYYY-MM-DDTHH:mm"), in the browser's local time zone. */
+export function toDatetimeLocalValue(iso: string): string {
+  const date = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}

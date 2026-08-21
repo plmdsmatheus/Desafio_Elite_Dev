@@ -10,6 +10,7 @@ export interface User {
 
 export type EventCategory = "show" | "movie"
 export type EventStatus = "draft" | "published" | "canceled"
+export type EventEffectiveStatus = EventStatus | "completed"
 export type EventSourceProvider = "ticketmaster" | "tmdb" | "manual"
 
 export interface Event {
@@ -29,6 +30,7 @@ export interface Event {
   capacity: number
   price: string
   status: EventStatus
+  effective_status: EventEffectiveStatus
   has_seat_map: boolean
   tickets_sold: number
   tickets_available: number

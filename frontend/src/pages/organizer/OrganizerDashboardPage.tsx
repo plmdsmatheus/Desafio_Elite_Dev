@@ -37,8 +37,8 @@ function OrganizerEventRow({ event }: { event: Event }) {
           <Badge variant="outline" className={CATEGORY_BADGE_CLASS[event.category]}>
             {CATEGORY_LABEL[event.category] ?? event.category}
           </Badge>
-          <Badge variant="outline" className={EVENT_STATUS_BADGE_CLASS[event.status]}>
-            {EVENT_STATUS_LABEL[event.status] ?? event.status}
+          <Badge variant="outline" className={EVENT_STATUS_BADGE_CLASS[event.effective_status]}>
+            {EVENT_STATUS_LABEL[event.effective_status] ?? event.effective_status}
           </Badge>
         </div>
 

@@ -43,6 +43,47 @@ class TestReservationCreate:
         assert response.status_code == 400
         assert "event" in response.data
 
+    def test_cannot_reserve_an_event_that_already_happened(self, api_client, customer, published_event):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        published_event.date_time = timezone.now() - timedelta(hours=1)
+        published_event.save()
+
+        api_client.force_authenticate(user=customer)
+        response = api_client.post(
+            "/api/reservations", {"event": published_event.id, "quantity": 1}, format="json"
+        )
+        assert response.status_code == 400
+        assert "event" in response.data
+
+
+@pytest.mark.django_db
+class TestReservationPayBlocksCanceledEvent:
+    def test_paying_for_an_event_canceled_after_reservation_is_declined(
+        self, api_client, customer, published_event
+    ):
+        """The event can be canceled by the organizer between reservation
+        creation and payment — the payment must not silently mint a ticket
+        for an event that's no longer happening."""
+        api_client.force_authenticate(user=customer)
+        reservation_id = api_client.post(
+            "/api/reservations", {"event": published_event.id, "quantity": 1}, format="json"
+        ).data["id"]
+
+        published_event.status = published_event.Status.CANCELED
+        published_event.save()
+
+        response = api_client.post(
+            f"/api/reservations/{reservation_id}/pay",
+            {"card_number": "4111111111111111"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.data["payment_status"] == "declined"
+        assert response.data["tickets"] == []
+
     def test_quantity_must_be_at_least_one(self, api_client, customer, published_event):
         api_client.force_authenticate(user=customer)
         response = api_client.post(

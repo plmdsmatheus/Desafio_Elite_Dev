@@ -1100,6 +1100,104 @@ em verde quando selecionadas."
   scroll horizontal interno pra grades maiores). Nenhuma mudança de lógica (hold, polling,
   concorrência) — só o visual do botão de cada assento.
 
+### ✅ 9.9 — Criar/editar evento (`/organizador/eventos/novo` e `/organizador/eventos/:id/editar`)
+
+Última tela de fluxo do organizador. Backend (`EventWriteSerializer`, `POST/PATCH /api/events`) já
+existia desde o esqueleto inicial — inclusive já validava capacidade vs. vendidos — então foi
+mais uma vez um trabalho majoritariamente de frontend, além de já ter `has_seat_map` na serializer
+desde o Checkpoint 9.8.
+
+- `EventFormPage`: mesmo componente serve criação e edição (`useParams` opcional). Em modo edição:
+  carrega o evento (`getEvent`), mostra skeleton/estado "não encontrado", e **redireciona pro
+  painel se o evento não pertence ao organizador logado** (guarda extra no cliente — o backend já
+  devolve 404 no PATCH pra dono errado, mas sem essa guarda o formulário carregaria os dados de
+  outro organizador antes de descobrir isso só ao salvar).
+- **Busca no catálogo (só na criação)**: reaproveita `GET /api/catalog/search` (Ticketmaster/TMDb)
+  que já existia pro backend mas nunca tinha frontend. Organizador busca, clica num resultado, e
+  título/descrição/imagem/local/cidade/endereço/data (quando disponível) preenchem o formulário —
+  ele completa capacidade e preço, que o catálogo não fornece. Segue puramente opcional: dá pra
+  ignorar e preencher tudo à mão.
+- **Ingressos com assento marcado**: switch liga `has_seat_map`, o que já faz o backend gerar a
+  grade de assentos sozinho (Checkpoint 9.8). Fica **travado (`disabled`) se o evento já vendeu
+  algum ingresso** — mudar isso depois criaria inconsistência entre ingressos antigos (sem
+  assento) e novos (com assento).
+- **Status** exposto como select simples (Rascunho/Publicado/Cancelado) — sem fluxo dedicado de
+  "publicar"/"despublicar", mesma flexibilidade que o backend já oferecia.
+- Erros de validação por campo (`getApiFieldErrors`, mesmo padrão do cadastro) — capacidade abaixo
+  do já vendido, preço negativo etc. aparecem embaixo do campo certo.
+- **Bug pego durante o teste manual, corrigido no componente compartilhado**: `EventThumbnail`
+  quebrava a página inteira (tela preta, erro não capturado) quando `dateTime` vinha vazio ou
+  inválido — exatamente o caso do formulário em branco (nenhuma data ainda) e dos resultados de
+  filme do TMDb (nunca têm data sugerida). Corrigido no componente (não só no formulário) pra
+  validar a data antes de formatá-la, já que qualquer outro lugar que reusa `EventThumbnail` no
+  futuro estaria sujeito ao mesmo problema.
+- **Testado com Playwright contra o backend real**: guarda de acesso (deslogado → login, cliente →
+  home), busca real no catálogo (Ticketmaster "Hamilton", 20 resultados reais, clique preenche os
+  campos certos), criação de evento novo (rascunho, aparece no painel — "15 evento(s)" em vez de
+  14), edição de evento existente (mudei status pra Publicado e capacidade, confirmado salvo),
+  bloqueio do switch de assento marcado ao editar "Duna: Parte Dois" (60/60 vendidos), guarda de
+  dono (criei um segundo organizador via shell, confirmei que ele é redirecionado ao tentar editar
+  um evento que não é dele), criação com `has_seat_map=True` gerando a grade de assentos certa
+  (24 assentos pra capacidade 24). Mobile (375px) sem overflow. Eventos e conta de teste
+  removidos ao final. Suíte do backend sem mudança (86 testes, já passava — mudança foi só
+  frontend + o fix do `EventThumbnail`). `build`/`lint` limpos.
+
+Com essa tela, o fluxo do organizador está completo: painel → criar/editar evento → (futura tela
+de portaria, ainda no roadmap original).
+
+### ✅ 9.10 — 4 melhorias reportadas pelo usuário (painel do organizador + detalhe do evento)
+
+**1. Status "Realizado" pra eventos que já aconteceram**
+
+- `status` continua só `draft`/`published`/`canceled` (reflete a intenção do organizador, nunca
+  muda sozinho — não tem cron/Celery nesse projeto). Nova property computada
+  `Event.effective_status` (`apps/events/models.py`): se `status == published` e `date_time` já
+  passou, retorna `"completed"`; senão devolve o `status` normal. Exposta na serializer como
+  `effective_status` (read-only). Um rascunho ou evento cancelado com data no passado **não** vira
+  "Realizado" — só um publicado que efetivamente aconteceu.
+- Como consequência direta (senão o rótulo seria só cosmético): `ReservationCreateSerializer`
+  agora rejeita reservar um evento cujo `date_time` já passou ("Este evento já aconteceu"), e
+  `ReservationPayView` recusa a aprovação se o evento não estiver mais `published` no momento do
+  pagamento (cobre o caso de o evento ser cancelado entre a criação da reserva e o pagamento).
+- Frontend: badge "Realizado" no painel do organizador (`OrganizerDashboardPage`, mesmo estilo
+  neutro do rascunho) e no `PurchasePanel` do detalhe do evento (mostra "Evento já realizado" no
+  lugar da disponibilidade, com o botão de compra desabilitado).
+
+**2. Botão "Editar evento" no detalhe do evento**
+
+- `EventDetailPage`: se o usuário logado é organizador E dono do evento (`user.id ===
+  event.organizer`), aparece um botão "Editar evento" ao lado do "Compartilhar", linkando pra
+  `/organizador/eventos/:id/editar`. Não aparece pra clientes nem pra outros organizadores.
+
+**3. Cancelar um evento não invalidava os ingressos já vendidos**
+
+- `EventDetailView.update()`: quando o evento é salvo com `status=canceled`, todos os `Ticket`s
+  ainda `valid` desse evento são atualizados em lote pra `canceled` (ingressos já `used` não são
+  mexidos — já aconteceram de verdade). Idempotente — salvar de novo um evento já cancelado não
+  faz nada, já que não sobra ticket `valid` pra atualizar.
+- **Achado durante o teste**: o usuário já tinha cancelado "Noite Acústica — Casa Pequena" na
+  própria sessão de testes dele, antes dessa correção existir — os 5 ingressos reais do `cliente1`
+  continuavam `valid` no banco. Apliquei a mesma atualização em lote (só a mudança de status,
+  nada de dados apagados) nesse eventos existente pra que o cenário real que o usuário reportou
+  ficasse de fato corrigido, não só o código pra daqui pra frente. Confirmado via "Meus ingressos"
+  do `cliente1`: os 5 ingressos aparecem "Cancelado" na seção Histórico.
+
+**4. Painel do organizador não atualizava sozinho após editar**
+
+- Bug real de cache: `EventFormPage` salvava e navegava de volta sem invalidar a query
+  `organizer-events` do React Query — o painel continuava mostrando os dados de antes da edição
+  até um F5 manual. Corrigido: `handleSubmit` agora invalida `["organizer-events"]`,
+  `["event", id]` (a mesma chave usada pelo detalhe/checkout) e `["events"]` (listagem pública)
+  antes de navegar. Testado renomeando um evento e confirmando que o painel já mostra o novo título
+  sem reload.
+
+Testes novos no backend: `TestEffectiveStatus` (4 casos), cascata de cancelamento de ingressos (2
+casos), bloqueio de reserva pra evento que já aconteceu, bloqueio de pagamento pra evento cancelado
+entre reserva e pagamento — 8 no total. Precisei também ajustar 2 testes de concorrência que
+criavam eventos com `date_time=timezone.now()` (exatamente "agora"), já inválido pela nova regra —
+trocado pra "amanhã", já que a intenção desses testes é concorrência/capacidade, não validade de
+data. Suíte do backend: 94 testes (+8). `build`/`lint` do frontend limpos.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção

@@ -18,6 +18,11 @@ export function EventThumbnail({ src, category, dateTime, className }: EventThum
   const [failed, setFailed] = useState(false)
 
   if (!src || failed) {
+    // `dateTime` can be empty/unparseable — a blank organizer form before a
+    // date is picked, or a TMDb catalog result (movies never get a suggested
+    // date) — formatting an invalid Date throws, so only show it when valid.
+    const hasValidDate = dateTime && !Number.isNaN(new Date(dateTime).getTime())
+
     return (
       <div
         className={cn(
@@ -27,7 +32,8 @@ export function EventThumbnail({ src, category, dateTime, className }: EventThum
       >
         <CalendarDays className="size-9 text-primary/40" strokeWidth={1.5} />
         <p className="text-xs font-medium text-primary/70">
-          {CATEGORY_LABEL[category] ?? category} · {formatDateShort(dateTime)}
+          {CATEGORY_LABEL[category] ?? category}
+          {hasValidDate ? ` · ${formatDateShort(dateTime)}` : ""}
         </p>
       </div>
     )

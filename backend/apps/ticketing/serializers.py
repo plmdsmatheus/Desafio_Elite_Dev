@@ -34,6 +34,9 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
         if event.status != event.Status.PUBLISHED:
             raise serializers.ValidationError({"event": "Este evento não está publicado."})
 
+        if event.date_time <= timezone.now():
+            raise serializers.ValidationError({"event": "Este evento já aconteceu."})
+
         if event.has_seat_map:
             if not seat_ids:
                 raise serializers.ValidationError({"seat_ids": "Selecione ao menos um assento."})

@@ -164,6 +164,12 @@ class ReservationPayView(APIView):
                         status=status.HTTP_409_CONFLICT,
                     )
 
+            # The event may have been canceled after this reservation was
+            # created but before payment landed — never issue a ticket for
+            # that, even if the card would otherwise approve.
+            if approved and event.status != Event.Status.PUBLISHED:
+                approved = False
+
             if approved and event.tickets_sold + reservation.quantity > event.capacity:
                 approved = False
 

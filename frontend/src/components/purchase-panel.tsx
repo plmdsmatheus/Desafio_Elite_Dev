@@ -36,11 +36,19 @@ interface PurchasePanelProps {
 export function PurchasePanel({ event, user, quantity, onQuantityChange }: PurchasePanelProps) {
   const level = getAvailabilityLevel(event.tickets_available, event.capacity)
   const soldOut = level === "sold_out"
-  const canReserve = !!user && user.role === "customer" && !soldOut
+  const isCompleted = event.effective_status === "completed"
+  const canReserve = !!user && user.role === "customer" && !soldOut && !isCompleted
   const maxQuantity = Math.min(event.tickets_available, MAX_QUANTITY_PER_RESERVATION)
   const total = quantity * Number(event.price)
 
   function buildCta(compact: boolean) {
+    if (isCompleted) {
+      return (
+        <Button disabled className="w-full">
+          Evento já realizado
+        </Button>
+      )
+    }
     if (soldOut) {
       return (
         <Button disabled className="w-full">
@@ -86,8 +94,13 @@ export function PurchasePanel({ event, user, quantity, onQuantityChange }: Purch
             <p className="text-3xl font-bold text-primary">{formatCurrency(event.price)}</p>
           </div>
 
-          <p className={cn("text-sm font-medium", AVAILABILITY_TEXT_CLASS[level])}>
-            {availabilityText(event.tickets_available)}
+          <p
+            className={cn(
+              "text-sm font-medium",
+              isCompleted ? "text-muted-foreground" : AVAILABILITY_TEXT_CLASS[level],
+            )}
+          >
+            {isCompleted ? "Evento já realizado" : availabilityText(event.tickets_available)}
           </p>
 
           {canReserve && !event.has_seat_map && (
@@ -113,8 +126,13 @@ export function PurchasePanel({ event, user, quantity, onQuantityChange }: Purch
       <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.25)] lg:hidden">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className={cn("truncate text-xs font-medium", AVAILABILITY_TEXT_CLASS[level])}>
-              {availabilityTextCompact(event.tickets_available)}
+            <p
+              className={cn(
+                "truncate text-xs font-medium",
+                isCompleted ? "text-muted-foreground" : AVAILABILITY_TEXT_CLASS[level],
+              )}
+            >
+              {isCompleted ? "Evento já realizado" : availabilityTextCompact(event.tickets_available)}
             </p>
             <p className="truncate text-lg font-bold text-primary">
               {formatCurrency(canReserve && !event.has_seat_map ? total : event.price)}

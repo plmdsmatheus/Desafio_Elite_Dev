@@ -1,5 +1,22 @@
 import { apiClient } from "@/api/client"
-import type { Event, EventCategory, Paginated, Seat } from "@/types"
+import type { Event, EventCategory, EventSourceProvider, EventStatus, Paginated, Seat } from "@/types"
+
+export interface EventFormInput {
+  source_provider: EventSourceProvider
+  source_id: string
+  title: string
+  description: string
+  image_url: string
+  category: EventCategory
+  venue_name: string
+  address: string
+  city: string
+  date_time: string
+  capacity: number
+  price: string
+  status: EventStatus
+  has_seat_map: boolean
+}
 
 export interface EventListParams {
   q?: string
@@ -28,4 +45,12 @@ export function getOrganizerEvents(page: number) {
 
 export function getEventSeats(eventId: string | number) {
   return apiClient.get<Seat[]>(`/events/${eventId}/seats`).then((res) => res.data)
+}
+
+export function createEvent(input: EventFormInput) {
+  return apiClient.post<Event>("/events/", input).then((res) => res.data)
+}
+
+export function updateEvent(eventId: string | number, input: EventFormInput) {
+  return apiClient.patch<Event>(`/events/${eventId}`, input).then((res) => res.data)
 }

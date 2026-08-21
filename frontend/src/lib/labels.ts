@@ -14,10 +14,12 @@ export const EVENT_STATUS_LABEL: Record<string, string> = {
   draft: "Rascunho",
   published: "Publicado",
   canceled: "Cancelado",
+  completed: "Realizado",
 }
 
 export const EVENT_STATUS_BADGE_CLASS: Record<string, string> = {
   draft: "border-border bg-muted text-muted-foreground",
   published: "border-success/20 bg-success/10 text-success",
   canceled: "border-destructive/20 bg-destructive/10 text-destructive",
+  completed: "border-border bg-muted text-muted-foreground",
 }

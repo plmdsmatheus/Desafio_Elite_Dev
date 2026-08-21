@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 # Module level (instead of nested in the class) so drf-spectacular
@@ -109,3 +110,14 @@ class Event(models.Model):
     @property
     def tickets_available(self) -> int:
         return max(self.capacity - self.tickets_sold, 0)
+
+    @property
+    def effective_status(self) -> str:
+        """`status` reflects organizer intent (draft/published/canceled) and
+        is never auto-changed — there's no scheduled job in this project to
+        flip it. This is a purely computed display label layered on top: a
+        published event whose date has already passed reads as "completed"
+        everywhere (organizer panel, detail page) without needing a cron."""
+        if self.status == self.Status.PUBLISHED and self.date_time <= timezone.now():
+            return "completed"
+        return self.status

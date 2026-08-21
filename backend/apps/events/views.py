@@ -120,6 +120,18 @@ class EventDetailView(generics.RetrieveUpdateAPIView):
 
             generate_seats_for_event(serializer.instance)
 
+        if serializer.instance.status == Event.Status.CANCELED:
+            # Canceling the event must invalidate its tickets too — otherwise
+            # a customer could still present a "valid" ticket at the gate (or
+            # transfer/cancel it) for an event that isn't happening anymore.
+            # Idempotent: a no-op on a second save once already canceled,
+            # since every valid ticket was already flipped the first time.
+            from apps.ticketing.models import Ticket, TicketStatus
+
+            Ticket.objects.filter(event=serializer.instance, status=TicketStatus.VALID).update(
+                status=TicketStatus.CANCELED
+            )
+
         return Response(EventSerializer(serializer.instance).data)
 
 

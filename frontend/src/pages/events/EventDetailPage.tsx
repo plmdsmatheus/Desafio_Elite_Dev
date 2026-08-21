@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Calendar, MapPin } from "lucide-react"
+import { ArrowLeft, Calendar, MapPin, Pencil } from "lucide-react"
 import { useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { getEvent } from "@/api/events"
@@ -107,7 +107,17 @@ function EventDetailContent({ event, user }: { event: Event; user: User | null }
 
           <div className="flex items-start justify-between gap-3">
             <h1 className="text-2xl font-semibold sm:text-3xl">{event.title}</h1>
-            <ShareButton title={event.title} />
+            <div className="flex shrink-0 gap-2">
+              {user?.role === "organizer" && user.id === event.organizer && (
+                <Button asChild variant="outline" size="sm">
+                  <Link to={`/organizador/eventos/${event.id}/editar`}>
+                    <Pencil />
+                    Editar evento
+                  </Link>
+                </Button>
+              )}
+              <ShareButton title={event.title} />
+            </div>
           </div>
 
           <p className="flex items-center gap-2 text-muted-foreground">

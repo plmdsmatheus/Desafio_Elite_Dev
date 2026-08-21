@@ -3,6 +3,7 @@ the concurrency locks (select_for_update) hold under actual concurrency, not
 just in theory. Slower than the rest of the suite, deliberately."""
 
 import threading
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -214,7 +215,7 @@ class TestSeatHoldConcurrency:
 
         event = Event.objects.create(
             organizer=organizer, title="Cinema Concorrido", category=Event.Category.MOVIE,
-            venue_name="V", city="SP", date_time=timezone.now(), capacity=4,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=1), capacity=4,
             price=Decimal("40"), status=Event.Status.PUBLISHED, has_seat_map=True,
         )
         generate_seats_for_event(event, seats_per_row=4)
@@ -260,7 +261,7 @@ class TestSeatHoldConcurrency:
         organizer = User.objects.create_user(email="seat-org2@test.com", password="x", role=User.Role.ORGANIZER)
         event = Event.objects.create(
             organizer=organizer, title="Estreia Concorrida", category=Event.Category.MOVIE,
-            venue_name="V", city="SP", date_time=timezone.now(), capacity=3,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=1), capacity=3,
             price=Decimal("40"), status=Event.Status.PUBLISHED, has_seat_map=True,
         )
         generate_seats_for_event(event, seats_per_row=3)
