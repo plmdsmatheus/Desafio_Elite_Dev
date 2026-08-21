@@ -126,11 +126,12 @@ class EventDetailView(generics.RetrieveUpdateAPIView):
             # transfer/cancel it) for an event that isn't happening anymore.
             # Idempotent: a no-op on a second save once already canceled,
             # since every valid ticket was already flipped the first time.
-            from apps.ticketing.models import Ticket, TicketStatus
+            # Also releases any seats those tickets held — see
+            # cancel_valid_tickets_for_event's docstring for why clearing the
+            # seat's own state isn't enough on its own.
+            from apps.ticketing.seating import cancel_valid_tickets_for_event
 
-            Ticket.objects.filter(event=serializer.instance, status=TicketStatus.VALID).update(
-                status=TicketStatus.CANCELED
-            )
+            cancel_valid_tickets_for_event(serializer.instance)
 
         return Response(EventSerializer(serializer.instance).data)
 

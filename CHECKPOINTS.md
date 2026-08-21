@@ -1271,8 +1271,67 @@ duração nem banco embutido. Perguntei ao usuário onde o backend ficaria hospe
   Render/Vercel, conectar o repositório e preencher os valores reais (chaves do Ticketmaster/TMDb
   já existentes no `.env` local).
 
-## ⬜ Checkpoint 10 — README e documentação de uso de IA
+## ✅ Checkpoint 10 — README e documentação de uso de IA
 
-- Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção
-  transparente de uso de IA (o que foi feito com IA nesta sessão vs. o que o usuário lapidou por
-  conta própria — principalmente identidade visual e ajustes finos de UX).
+- `README.md` (novo, raiz do repo): visão geral, funcionalidades por papel (cliente/organizador/
+  portaria), stack técnica, passo a passo de setup (Docker Compose e sem Docker), credenciais e
+  conteúdo do seed, como rodar a suíte de testes, decisões técnicas que valem destaque
+  (concorrência de assentos, estoque derivado, QR assinado, o bug real de JOIN-obsoleto-com-
+  select_for_update pego pelos testes de thread), estrutura do repositório, limitações conhecidas
+  e o que ficou de fora de propósito.
+- Links de demo (Vercel + Render + Swagger) confirmados pelo usuário — nada de URL adivinhada.
+- Seção "Uso de IA" honesta e específica: nomeia a ferramenta (Claude Code), aponta o
+  `CHECKPOINTS.md` como o log real do processo (o "artefato versionado" que o enunciado pede),
+  e separa concretamente o que veio do usuário (paleta de marca em hex, todas as correções de
+  comportamento de UI reportadas por teste manual próprio, os bugs reais que ele encontrou
+  testando com múltiplas contas/navegadores — farol de disponibilidade, ingresso válido após
+  evento cancelado, assento preso quando o comprador desiste — as decisões de escopo/ordem das
+  telas, e a escolha + diagnóstico da infraestrutura de deploy) do que foi implementação feita
+  pela IA sob essa direção.
+
+Com isso, os 10 checkpoints do roadmap original estão completos.
+
+## Pós-checkpoint 10 — bugs reportados em produção
+
+### ✅ Bugfix — botão "Compartilhar" visível em ingresso cancelado ou já utilizado
+
+Reportado pelo usuário em duas partes: primeiro que o botão de compartilhar não deveria aparecer
+num ingresso cancelado; depois, testando de novo, que o mesmo valia pra um ingresso já validado
+na portaria (`used`) — ambos os casos levariam a um QR que não serve mais pra entrar no evento.
+Corrigido em `ticket-card.tsx`: `ShareButton` (e os botões de transferir/cancelar) agora só
+renderizam quando `ticket.status === "valid"` — a condição inicial (`!== "canceled"`) tinha
+corrigido só o primeiro relato e deixado o botão vazando pra ingressos `used`.
+
+Verificado ao vivo (Playwright contra o backend real): comprei 3 assentos, cancelei um via API,
+validei outro na portaria (`gate/validate`) e deixei o terceiro válido — só o card `Válido`
+mostra os botões de ação; `Cancelado` e `Utilizado` aparecem sem nenhum botão.
+
+### ✅ Bugfix crítico — `UniqueViolation` ao revender um assento após cancelamento
+
+Reportado pelo usuário testando com um amigo em produção: comprar N assentos, cancelar todos, e
+tentar comprar os mesmos assentos de novo — alguns ficavam impossíveis de selecionar, o resto
+dava `psycopg2.errors.UniqueViolation: duplicate key value violates unique constraint
+"ticketing_ticket_seat_id_key"` na hora do pagamento (500 sem tratamento).
+
+- **Causa raiz**: `Ticket.seat` é um `OneToOneField` — o Postgres cria uma constraint `UNIQUE`
+  em `seat_id` que vale pra **qualquer** linha de `Ticket`, cancelada ou não. Cancelar um ingresso
+  sempre limpou o `reservation`/`held_until` do `Seat`, mas nunca desvinculava o próprio
+  `Ticket.seat` — o ingresso cancelado continuava fisicamente ocupando o único slot daquele
+  `seat_id` no índice único do banco. Um ingresso novo pro mesmo assento nunca conseguia ser
+  inserido, mesmo com toda a lógica de aplicação (mapa de assentos, `hold_seats`) já tratando
+  corretamente um ticket cancelado como "não conta". Explica os dois sintomas relatados: assentos
+  ainda "presos" (o hold da tentativa anterior, que travou no meio do pagamento, ainda não tinha
+  expirado) e, depois de liberados, a mesma falha de novo no pagamento seguinte.
+- **Correção** (`apps/ticketing/seating.py`): duas funções novas —
+  `cancel_ticket_and_release_seat(ticket)` (cancelamento individual) e
+  `cancel_valid_tickets_for_event(event)` (cascata de cancelar evento inteiro) — ambas agora
+  **também limpam o `Ticket.seat` do próprio ingresso cancelado**, não só o estado do `Seat`.
+  Substituíram a lógica que estava inline em `TicketCancelView` e em
+  `EventDetailView.update()`.
+- 3 testes de regressão novos (`test_cancel.py`, `TestCancelSeatTicketRegression`) reproduzindo
+  o cenário exato: comprar 3 assentos, cancelar os 3, comprar os mesmos 3 de novo com outra
+  conta — sem erro; e o mesmo pela cascata de cancelamento de evento. Suíte do backend: 97
+  testes (+3).
+- Testado via `pytest` (97/97) e, depois que o backend local voltou, também ao vivo via
+  Playwright: comprar 3 assentos, cancelar os 3, comprar os mesmos 3 de novo com outra conta —
+  pagamento aprovado sem erro, sem 500 no log do Django.
