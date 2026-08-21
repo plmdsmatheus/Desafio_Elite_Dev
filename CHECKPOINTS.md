@@ -873,6 +873,33 @@ cadastrado.
     aparecem certinho dentro do dialog. Contas de teste removidas ao final (`_pw_test_*`, cascata
     apagou reserva/pagamento/ingresso junto). `build`/`lint` limpos.
 
+### ✅ 9.7 — Painel do organizador (`/organizador`)
+
+- **Backend já estava pronto** desde o esqueleto inicial: `GET /api/organizer/events`
+  (`OrganizerEventListView`, `IsOrganizer`) devolve todos os eventos do organizador logado, em
+  qualquer status (`draft`/`published`/`canceled`), com `tickets_sold`/`tickets_available`
+  anotados — só faltava consumir do frontend. Endpoint é paginado pela config global do DRF, igual
+  `/tickets/mine`.
+- `src/api/events.ts`: `getOrganizerEvents(page)`.
+- `src/lib/labels.ts`: `EVENT_STATUS_LABEL`/`EVENT_STATUS_BADGE_CLASS` (rascunho = cinza neutro,
+  publicado = verde de sucesso, cancelado = vermelho) — mesmo padrão de badge por cor já usado pra
+  categoria (`CATEGORY_BADGE_CLASS`).
+- `OrganizerDashboardPage`: mesma guarda de acesso das outras telas (`!user` → `/login`,
+  `role !== "organizer"` → `/`). Cada evento é uma linha com thumbnail, badges de categoria +
+  status, local/data/preço, barra de progresso vendidos/capacidade, e botão "Editar" apontando pra
+  `/organizador/eventos/:id/editar` (tela ainda placeholder — é o próximo passo). Botão "Criar
+  evento" no topo leva pra `/organizador/eventos/novo` (idem). Paginação Anterior/Próxima e estado
+  vazio ("Você ainda não criou nenhum evento" + CTA), mesmo padrão das outras listagens paginadas.
+- **Testado com Playwright contra o backend real**: guarda de acesso (deslogado → login, cliente →
+  home), `organizador@demo.com` tem 14 eventos reais do seed — confirmei paginação (3 páginas),
+  badge "Rascunho" aparecendo certinho no único evento de teste em draft ("Pré-venda Fechada
+  2027"), barra de progresso proporcional (ex: "60/60 vendidos" cheia, "6/100" quase vazia), link
+  "Editar" apontando pro evento certo. Estado vazio testado com uma conta de organizador descartável
+  criada via shell (cadastro público só cria `customer`, então não dá pra testar isso pela UI) e
+  removida depois. Mobile (375px) sem overflow horizontal. Suíte do backend sem mudança (59 testes,
+  já passava) — essa tela foi só frontend consumindo um endpoint que já existia. `build`/`lint`
+  limpos.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção

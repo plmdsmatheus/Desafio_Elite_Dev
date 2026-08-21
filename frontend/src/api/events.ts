@@ -19,3 +19,9 @@ export function listEvents(params: EventListParams) {
 export function getEvent(eventId: string | number) {
   return apiClient.get<Event>(`/events/${eventId}`).then((res) => res.data)
 }
+
+export function getOrganizerEvents(page: number) {
+  return apiClient
+    .get<Paginated<Event>>("/organizer/events", { params: { page } })
+    .then((res) => res.data)
+}
