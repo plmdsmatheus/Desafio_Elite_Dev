@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Calendar, Check, MapPin, Share2 } from "lucide-react"
+import { ArrowLeft, Calendar, MapPin } from "lucide-react"
 import { useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { getEvent } from "@/api/events"
 import { EventThumbnail } from "@/components/event-thumbnail"
 import { PurchasePanel } from "@/components/purchase-panel"
+import { ShareButton } from "@/components/share-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,33 +21,6 @@ import type { Event, User } from "@/types"
 function mapsEmbedUrl(event: { venue_name: string; address: string; city: string }): string {
   const query = [event.venue_name, event.address, event.city].filter(Boolean).join(", ")
   return `https://www.google.com/maps?q=${encodeURIComponent(query)}&output=embed`
-}
-
-function ShareButton({ title }: { title: string }) {
-  const [copied, setCopied] = useState(false)
-
-  async function handleShare() {
-    const shareData = { title, url: window.location.href }
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData)
-        return
-      }
-      await navigator.clipboard.writeText(window.location.href)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // User canceled the native share sheet, or the clipboard write was
-      // denied by the browser — neither is worth surfacing as an error.
-    }
-  }
-
-  return (
-    <Button type="button" variant="outline" size="sm" onClick={handleShare} className="shrink-0">
-      {copied ? <Check /> : <Share2 />}
-      {copied ? "Link copiado!" : "Compartilhar"}
-    </Button>
-  )
 }
 
 export function EventDetailPage() {

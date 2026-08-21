@@ -794,6 +794,42 @@ passando de página nem a paginação (`PAGE_SIZE=6`, precisa de 7+ pra ter uma 
   páginas — exatamente o volume que faltava pra testar a paginação de ponta a ponta. Suíte do
   backend (53 testes) passando.
 
+### ✅ 9.6 — Meus ingressos com QR (`/meus-ingressos`)
+
+- `src/api/tickets.ts`: `getMyTickets(page)` (`GET /api/tickets/mine`) — **achado importante**:
+  essa rota também é paginada (mesma config global do DRF, `PAGE_SIZE=6`), não devolve array cru
+  como eu tinha assumido de primeira; corrigido pra usar o mesmo tipo `Paginated<Ticket>` já usado
+  em `listEvents`.
+- **`ShareButton` virou componente compartilhado** (`src/components/share-button.tsx`) — antes
+  vivia só dentro de `EventDetailPage.tsx` e sempre compartilhava `window.location.href` (a URL da
+  própria página). Nessa tela cada ingresso tem seu próprio link público
+  (`ticket.share_url`), então o componente ganhou um prop `url` opcional (cai pra
+  `window.location.href` se omitido — mantém o comportamento antigo no detalhe do evento).
+- `src/components/ticket-card.tsx`: card reaproveitando o mesmo layout do ingresso compartilhado
+  (Checkpoint 9.2) — badge de status, QR (`qrcode.react`, box branco fixo), código público,
+  timestamp de validação quando já utilizado — mais o botão de compartilhar e um link pro evento.
+- `MyTicketsPage`: mesma guarda de acesso das outras telas de cliente (`!user` → `/login`,
+  `role !== "customer"` → `/`). Ingressos da página atual são divididos em **"Válidos"** (grid
+  principal) e **"Histórico"** (usados/cancelados — seção com `opacity-60`, mesmo padrão visual já
+  usado pros eventos esgotados no Checkpoint 9.5b, reaproveitando a linguagem visual em vez de
+  inventar uma nova). Paginação com os mesmos botões Anterior/Próxima da listagem de eventos.
+  Estado vazio ("Você ainda não tem ingressos" + link pra buscar eventos) pro cliente que nunca
+  comprou nada.
+- **Testado com Playwright contra o backend real** — e essa tela acabou puxando dados reais de
+  sobra: `cliente1` tem 71 ingressos (os 60 de "Duna: Parte Dois" e 5 de "Noite Acústica" que o
+  próprio usuário comprou testando o farol de disponibilidade, mais os 2 do seed original), e
+  `cliente2` tem 80 (de "Coringa: Delírio a Dois", testado pelo usuário logo depois do seed de 10
+  eventos). Investiguei antes de mexer em qualquer coisa — as datas de criação batem exatamente
+  com quando o usuário testou cada funcionalidade, então é atividade real dele, não sobra minha; **não
+  apaguei nada**. Acabou sendo útil: 71 ingressos em vez de 2 testou a paginação de verdade (12
+  páginas) sem precisar fabricar dado nenhum. Confirmado: guarda de acesso (deslogado → login,
+  organizador → home), navegação entre páginas trazendo ingressos diferentes, seção "Histórico"
+  aparecendo certinha na última página (achei o ingresso "já utilizado" do seed original — mesmo
+  `public_code` documentado desde o Checkpoint 6, prova que nada nessa cadeia de dados quebrou),
+  estado vazio com uma conta nova de teste (criada e removida depois), mobile (375px, sem overflow
+  horizontal, QR grande o suficiente pra ler). Suíte do backend (53 testes) sem regressão — mudança
+  foi só frontend. `build`/`lint` limpos.
+
 ## ⬜ Checkpoint 10 — README e documentação de uso de IA
 
 - Passo a passo de setup/execução, credenciais de teste semeadas, limitações conhecidas, seção
