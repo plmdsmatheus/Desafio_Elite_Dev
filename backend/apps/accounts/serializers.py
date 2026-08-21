@@ -23,8 +23,12 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Login por e-mail que já devolve os dados do usuário junto do token,
-    evitando uma segunda chamada a /me só para saber o papel e redirecionar."""
+    """Email-based login that returns the user's data alongside the token,
+    avoiding a second call to /me just to know the role and redirect."""
+
+    default_error_messages = {
+        "no_active_account": "E-mail ou senha inválidos.",
+    }
 
     @classmethod
     def get_token(cls, user):

@@ -31,6 +31,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
+    "drf_spectacular_sidecar",
     "corsheaders",
     "apps.accounts",
     "apps.catalog",
@@ -50,6 +52,10 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "config.urls"
+
+# API URLs don't use a trailing slash; disabling this avoids a 301 redirect on
+# POST/PATCH when the client gets the slash wrong (which can turn into a GET).
+APPEND_SLASH = False
 
 TEMPLATES = [
     {
@@ -131,7 +137,40 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
-    "PAGE_SIZE": 20,
+    # 6 casa com o carrossel de "até 6 eventos" na home do frontend — a página 1
+    # (carrossel) e as páginas seguintes (grade estática) usam o mesmo tamanho,
+    # então nenhum evento fica escondido entre um modo de exibição e outro.
+    "PAGE_SIZE": 6,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Plataforma de Eventos e Ingressos — API",
+    "DESCRIPTION": (
+        "Organizador publica eventos a partir de um catálogo externo (Ticketmaster/TMDb), "
+        "cliente reserva/paga (simulado)/recebe ingresso com QR, portaria valida na entrada.\n\n"
+        "Autenticação: `POST /api/auth/login` devolve um par de tokens JWT. Clique em "
+        "**Authorize** e cole `Bearer <access_token>` pra testar os endpoints protegidos."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Serves Swagger UI/ReDoc assets locally (staticfiles) instead of a CDN.
+    "SWAGGER_UI_DIST": "SIDECAR",
+    "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
+    "REDOC_DIST": "SIDECAR",
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "COMPONENT_SPLIT_REQUEST": True,
+    # Several models have their own "status" choices — without this the generator
+    # gives the schema components generic names like "Status361Enum".
+    "ENUM_NAME_OVERRIDES": {
+        "UserRoleEnum": "apps.accounts.models.UserRole.choices",
+        "EventCategoryEnum": "apps.events.models.EventCategory.choices",
+        "EventSourceProviderEnum": "apps.events.models.EventSourceProvider.choices",
+        "EventStatusEnum": "apps.events.models.EventStatus.choices",
+        "ReservationStatusEnum": "apps.ticketing.models.ReservationStatus.choices",
+        "PaymentStatusEnum": "apps.ticketing.models.PaymentStatus.choices",
+        "TicketStatusEnum": "apps.ticketing.models.TicketStatus.choices",
+    },
 }
 
 SIMPLE_JWT = {

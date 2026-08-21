@@ -3,12 +3,21 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 
 
+# Module level (not nested in the class) so drf-spectacular can import it via
+# ENUM_NAME_OVERRIDES; the User.Role alias below keeps the rest of the code
+# reading naturally (User.Role.CUSTOMER etc).
+class UserRole(models.TextChoices):
+    ORGANIZER = "organizer", "Organizador"
+    CUSTOMER = "customer", "Cliente"
+    GATE = "gate", "Portaria"
+
+
 class UserManager(BaseUserManager):
     use_in_migrations = True
 
     def _create_user(self, email, password, **extra_fields):
         if not email:
-            raise ValueError("O e-mail é obrigatório.")
+            raise ValueError("Email is required.")
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -26,23 +35,20 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("role", User.Role.ORGANIZER)
         if extra_fields.get("is_staff") is not True:
-            raise ValueError("Superuser precisa ter is_staff=True.")
+            raise ValueError("Superuser must have is_staff=True.")
         if extra_fields.get("is_superuser") is not True:
-            raise ValueError("Superuser precisa ter is_superuser=True.")
+            raise ValueError("Superuser must have is_superuser=True.")
         return self._create_user(email, password, **extra_fields)
 
 
 class User(AbstractUser):
-    """Usuário único com três papéis mutuamente exclusivos.
+    """Single user model with three mutually exclusive roles.
 
-    Cadastro público (API) só cria clientes; organizador e portaria são
-    provisionados via seed/admin, por serem contas operacionais.
+    Public signup (API) always creates a customer; organizer and gate accounts
+    are provisioned via seed/admin, since those are operational accounts.
     """
 
-    class Role(models.TextChoices):
-        ORGANIZER = "organizer", "Organizador"
-        CUSTOMER = "customer", "Cliente"
-        GATE = "gate", "Portaria"
+    Role = UserRole
 
     username = None
     email = models.EmailField("e-mail", unique=True)
