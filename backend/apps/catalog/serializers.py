@@ -13,3 +13,4 @@ class CatalogItemSerializer(serializers.Serializer):
     suggested_address = serializers.CharField(allow_blank=True)
     suggested_city = serializers.CharField(allow_blank=True)
     suggested_date_time = serializers.DateTimeField(allow_null=True)
+    suggested_age_rating = serializers.CharField(allow_blank=True)

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Banknote, CalendarClock, MapPin, Search, Users } from "lucide-react"
+import { Banknote, CalendarClock, MapPin, Search, ShieldAlert, Users } from "lucide-react"
 import { useState } from "react"
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
 import { searchCatalog } from "@/api/catalog"
@@ -25,7 +25,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api-error"
 import { toDatetimeLocalValue } from "@/lib/format"
-import type { CatalogItem, Event, EventCategory, EventSourceProvider } from "@/types"
+import { AGE_RATING_LABEL } from "@/lib/labels"
+import type { CatalogItem, Event, EventAgeRating, EventCategory, EventSourceProvider } from "@/types"
 
 export function EventFormPage() {
   const { eventId } = useParams<{ eventId: string }>()
@@ -88,6 +89,10 @@ const CATEGORY_OPTIONS: { value: EventCategory; label: string }[] = [
   { value: "movie", label: "Filme" },
 ]
 
+// Radix Select items can't take an empty string value — this sentinel stands
+// in for "sem classificação" (age_rating === "") in the UI only.
+const AGE_RATING_UNSET = "none"
+
 function EventForm({ initialEvent }: { initialEvent: Event | null }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -99,6 +104,7 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
   const [description, setDescription] = useState(initialEvent?.description ?? "")
   const [imageUrl, setImageUrl] = useState(initialEvent?.image_url ?? "")
   const [category, setCategory] = useState<EventCategory>(initialEvent?.category ?? "show")
+  const [ageRating, setAgeRating] = useState<EventAgeRating>(initialEvent?.age_rating ?? "")
   const [venueName, setVenueName] = useState(initialEvent?.venue_name ?? "")
   const [address, setAddress] = useState(initialEvent?.address ?? "")
   const [city, setCity] = useState(initialEvent?.city ?? "")
@@ -147,6 +153,7 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
     setDescription(item.description)
     setImageUrl(item.image_url)
     setCategory(item.category)
+    setAgeRating(item.suggested_age_rating)
     setVenueName(item.suggested_venue_name)
     setAddress(item.suggested_address)
     setCity(item.suggested_city)
@@ -181,6 +188,7 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
       description,
       image_url: imageUrl,
       category,
+      age_rating: ageRating,
       venue_name: venueName,
       address,
       city,
@@ -336,7 +344,7 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
       <Card>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+            <div className="grid gap-4 sm:grid-cols-[1fr_auto_auto]">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="title">Título</Label>
                 <Input
@@ -363,6 +371,31 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
                     {CATEGORY_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  <ShieldAlert className="size-3.5 text-muted-foreground" />
+                  Classificação
+                </Label>
+                <Select
+                  value={ageRating || AGE_RATING_UNSET}
+                  onValueChange={(value) =>
+                    setAgeRating(value === AGE_RATING_UNSET ? "" : (value as EventAgeRating))
+                  }
+                  disabled={isPublished}
+                >
+                  <SelectTrigger className="w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={AGE_RATING_UNSET}>Sem classificação</SelectItem>
+                    {Object.entries(AGE_RATING_LABEL).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
                       </SelectItem>
                     ))}
                   </SelectContent>

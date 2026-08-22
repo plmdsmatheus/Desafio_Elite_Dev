@@ -23,3 +23,14 @@ export const EVENT_STATUS_BADGE_CLASS: Record<string, string> = {
   canceled: "border-destructive/20 bg-destructive/10 text-destructive",
   completed: "border-border bg-muted text-muted-foreground",
 }
+
+// Same codes as ANCINE's classificação indicativa — "" (not set) is handled
+// by callers, never rendered.
+export const AGE_RATING_LABEL: Record<string, string> = {
+  L: "Livre",
+  "10": "10 anos",
+  "12": "12 anos",
+  "14": "14 anos",
+  "16": "16 anos",
+  "18": "18 anos",
+}

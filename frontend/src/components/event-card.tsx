@@ -1,4 +1,4 @@
-import { Calendar, MapPin } from "lucide-react"
+import { Calendar, MapPin, ShieldAlert } from "lucide-react"
 import { type MouseEvent, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { EventThumbnail } from "@/components/event-thumbnail"
@@ -11,7 +11,7 @@ import {
   getAvailabilityLevel,
 } from "@/lib/availability"
 import { formatCurrency, formatDateShort } from "@/lib/format"
-import { CATEGORY_BADGE_CLASS, CATEGORY_LABEL } from "@/lib/labels"
+import { AGE_RATING_LABEL, CATEGORY_BADGE_CLASS, CATEGORY_LABEL } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import type { Event } from "@/types"
 
@@ -125,6 +125,13 @@ export function EventCard({ event }: { event: Event }) {
             </span>
           )}
         </div>
+
+        {event.age_rating && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <ShieldAlert className="size-3.5 shrink-0" />
+            {AGE_RATING_LABEL[event.age_rating]}
+          </p>
+        )}
       </CardContent>
     </Card>
   )

@@ -23,6 +23,18 @@ class EventStatus(models.TextChoices):
     CANCELED = "canceled", "Cancelado"
 
 
+class EventAgeRating(models.TextChoices):
+    """Same codes as ANCINE's classificação indicativa — also what TMDb's
+    release_dates certification field for BR already returns as-is."""
+
+    FREE = "L", "Livre"
+    TEN = "10", "10 anos"
+    TWELVE = "12", "12 anos"
+    FOURTEEN = "14", "14 anos"
+    SIXTEEN = "16", "16 anos"
+    EIGHTEEN = "18", "18 anos"
+
+
 class EventQuerySet(models.QuerySet):
     def with_sold_counts(self):
         """Annotates _sold_count so tickets_sold/tickets_available don't each run
@@ -47,6 +59,7 @@ class Event(models.Model):
     SourceProvider = EventSourceProvider
     Category = EventCategory
     Status = EventStatus
+    AgeRating = EventAgeRating
 
     objects = EventQuerySet.as_manager()
 
@@ -68,6 +81,10 @@ class Event(models.Model):
     description = models.TextField(blank=True)
     image_url = models.URLField(blank=True)
     category = models.CharField(max_length=10, choices=Category.choices)
+    # Blank = unknown/not set — nothing shown, not "Livre". Only ever comes
+    # from a real source: the organizer picking it manually or a catalog
+    # search result that actually had the data (see apps.catalog.providers).
+    age_rating = models.CharField(max_length=3, choices=AgeRating.choices, blank=True, default="")
 
     venue_name = models.CharField(max_length=255)
     address = models.CharField(max_length=255, blank=True)

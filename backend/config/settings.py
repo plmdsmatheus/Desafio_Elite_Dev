@@ -181,6 +181,7 @@ SPECTACULAR_SETTINGS = {
         "EventCategoryEnum": "apps.events.models.EventCategory.choices",
         "EventSourceProviderEnum": "apps.events.models.EventSourceProvider.choices",
         "EventStatusEnum": "apps.events.models.EventStatus.choices",
+        "EventAgeRatingEnum": "apps.events.models.EventAgeRating.choices",
         "ReservationStatusEnum": "apps.ticketing.models.ReservationStatus.choices",
         "PaymentStatusEnum": "apps.ticketing.models.PaymentStatus.choices",
         "TicketStatusEnum": "apps.ticketing.models.TicketStatus.choices",

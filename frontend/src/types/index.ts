@@ -12,6 +12,8 @@ export type EventCategory = "show" | "movie"
 export type EventStatus = "draft" | "published" | "canceled"
 export type EventEffectiveStatus = EventStatus | "completed"
 export type EventSourceProvider = "ticketmaster" | "tmdb" | "manual"
+// Same codes as ANCINE's classificação indicativa. "" = not set/unknown.
+export type EventAgeRating = "" | "L" | "10" | "12" | "14" | "16" | "18"
 
 export interface Event {
   id: number
@@ -23,6 +25,7 @@ export interface Event {
   description: string
   image_url: string
   category: EventCategory
+  age_rating: EventAgeRating
   venue_name: string
   address: string
   city: string
@@ -101,6 +104,7 @@ export interface CatalogItem {
   suggested_address: string
   suggested_city: string
   suggested_date_time: string | null
+  suggested_age_rating: EventAgeRating
 }
 
 export interface Paginated<T> {

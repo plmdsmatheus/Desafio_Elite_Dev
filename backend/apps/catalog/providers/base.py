@@ -26,6 +26,9 @@ class CatalogItem:
     suggested_address: str = ""
     suggested_city: str = ""
     suggested_date_time: datetime | None = None
+    # Same codes as Event.AgeRating ("L", "10".."18"). Blank when the source
+    # simply doesn't have the data — never guessed.
+    suggested_age_rating: str = ""
 
 
 class CatalogProvider:

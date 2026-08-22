@@ -49,6 +49,11 @@ class TicketmasterProvider(CatalogProvider):
             genre = classifications[0].get("genre", {}).get("name", "") or ""
             subtitle = " · ".join(part for part in (segment, genre) if part and part != "Undefined")
 
+        # Discovery API only ever gives a yes/no flag here, never an actual
+        # rating number — "18" is the closest honest mapping, not a guess at
+        # which number applies.
+        age_rating = "18" if (event.get("ageRestrictions") or {}).get("legalAgeEnforced") else ""
+
         return CatalogItem(
             provider=self.key,
             external_id=event["id"],
@@ -61,4 +66,5 @@ class TicketmasterProvider(CatalogProvider):
             suggested_address=(venue.get("address") or {}).get("line1", "") or "",
             suggested_city=(venue.get("city") or {}).get("name", "") or "",
             suggested_date_time=date_time,
+            suggested_age_rating=age_rating,
         )
