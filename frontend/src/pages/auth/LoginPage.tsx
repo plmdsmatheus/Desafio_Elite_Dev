@@ -1,3 +1,4 @@
+import { LogIn, Lock, Mail } from "lucide-react"
 import { useState } from "react"
 import { Link, Navigate, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
@@ -61,7 +62,10 @@ export function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">E-mail</Label>
+              <Label htmlFor="email">
+                <Mail className="size-3.5 text-muted-foreground" />
+                E-mail
+              </Label>
               <Input
                 id="email"
                 type="email"
@@ -77,7 +81,10 @@ export function LoginPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Senha</Label>
+              <Label htmlFor="password">
+                <Lock className="size-3.5 text-muted-foreground" />
+                Senha
+              </Label>
               <PasswordInput
                 id="password"
                 autoComplete="current-password"
@@ -92,6 +99,7 @@ export function LoginPage() {
             </div>
 
             <Button type="submit" disabled={isSubmitting} className="mt-2">
+              <LogIn />
               {isSubmitting ? "Entrando..." : "Entrar"}
             </Button>
 

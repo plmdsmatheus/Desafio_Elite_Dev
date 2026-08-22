@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
-import { Calendar, MapPin, Pencil, Plus } from "lucide-react"
+import { Calendar, CalendarPlus, ChevronLeft, ChevronRight, MapPin, Pencil, Plus } from "lucide-react"
 import { useState } from "react"
 import { Link, Navigate } from "react-router-dom"
 import { getOrganizerEvents } from "@/api/events"
@@ -115,6 +115,7 @@ export function OrganizerDashboardPage() {
         </div>
       ) : !data || data.count === 0 ? (
         <div className="flex flex-col items-center gap-3 py-12 text-center">
+          <CalendarPlus className="size-8 text-muted-foreground" />
           <p className="text-muted-foreground">Você ainda não criou nenhum evento.</p>
           <Button asChild>
             <Link to="/organizador/eventos/novo">
@@ -141,6 +142,7 @@ export function OrganizerDashboardPage() {
                 disabled={!data.previous || isPlaceholderData}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
+                <ChevronLeft />
                 Anterior
               </Button>
               <Button
@@ -151,6 +153,7 @@ export function OrganizerDashboardPage() {
                 onClick={() => setPage((p) => p + 1)}
               >
                 Próxima
+                <ChevronRight />
               </Button>
             </div>
           </div>

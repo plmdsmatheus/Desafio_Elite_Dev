@@ -1740,3 +1740,41 @@ sendo só o `effective_status` computado de sempre, sem mudança.
   Endereço/Data continuam editáveis) → cancelar pelo diálogo → reabrir a edição (card só-leitura,
   nenhum campo de formulário). Zero erros de console em qualquer etapa. `tsc --noEmit` e `oxlint`
   limpos.
+
+## Checkpoint 17 — passe de acessibilidade: ícones no lugar de texto puro
+
+Pedido do usuário: "iremos colocar mais icones pelo site, está muito literal" — várias telas
+(barra de navegação, filtros, formulários, paginação, estados vazios) eram só texto, sem nenhum
+apoio visual. `lucide-react` já era usado em boa parte do site (cards de evento, portaria,
+checkout); esse checkpoint estende o mesmo padrão pros lugares que ainda estavam "literais",
+mantendo os ícones existentes como estavam.
+
+- **`layout.tsx`** (o mais literal — zero ícones antes): logo ganhou um `Ticket`; "Eventos" um
+  `CalendarDays`; o link específico do papel (organizador/cliente/portaria) ganha
+  `LayoutDashboard`/`Ticket`/`ScanLine` conforme o `role`; "Entrar"/"Criar conta"/"Sair" ganham
+  `LogIn`/`UserPlus`/`LogOut`.
+- **Filtros de `/eventos`** (`EventListPage.tsx`): cada `Label` (Buscar, Cidade, Categoria, Data)
+  ganha o ícone correspondente (`Search`/`MapPin`/`Tag`/`CalendarDays`) — o componente `Label` já
+  tinha `flex items-center gap-2` pronto pra isso. Botão "Limpar" ganha `X`, estado vazio ganha
+  `CalendarSearch`.
+- **Paginação** (padrão repetido em `EventListPage`, `MyTicketsPage`, `OrganizerDashboardPage`,
+  `GatePage`): "Anterior"/"Próxima" ganham `ChevronLeft`/`ChevronRight`.
+- **Estados vazios**: "Meus ingressos" ganha `Ticket`, "Meus eventos" ganha `CalendarPlus`,
+  portaria sem evento publicado ganha `CalendarX2`.
+- **`ticket-card.tsx`**: local e data do evento ganham `MapPin`/`CalendarDays`; "Assento X" ganha
+  `Armchair`; "Validado em" ganha `CheckCircle2`.
+- **Login/Cadastro**: campos de e-mail/senha ganham `Mail`/`Lock`, nome ganha `User`, botões de
+  submit ganham `LogIn`/`UserPlus`.
+- **Formulário de evento do organizador** (`EventFormPage.tsx`): Local/Cidade ganham `MapPin`,
+  Data e hora ganha `CalendarClock`, Capacidade ganha `Users`, Preço ganha `Banknote`.
+- **Checkout** (`CheckoutPage.tsx`): "Número do cartão" ganha `CreditCard`, "Nome no cartão" ganha
+  `User`, "Validade" ganha `CalendarClock`, "CVV" ganha `Lock`; botões "Confirmar reserva"/"Pagar"
+  ganham `CheckCircle2`/`CreditCard`.
+- **`EventDetailPage.tsx`**: o emoji 🎭 usado pra "Organizado por" virou o ícone `Drama` do
+  `lucide-react` — consistente com o resto do site (renderização de emoji varia por
+  SO/fonte/plataforma, ícone SVG não).
+- `tsc --noEmit` e `oxlint` limpos. Verificado ao vivo via Playwright: navegação deslogada,
+  logada como cliente e como organizador, formulário de criação de evento, detalhe de evento,
+  fluxo de checkout até a tela de pagamento — zero erros de console em qualquer tela. Reserva de
+  teste criada durante a verificação (`Divertida Mente 2`, cliente1@demo.com) removida via shell
+  do Django depois.

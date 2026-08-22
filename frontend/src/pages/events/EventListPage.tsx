@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { CalendarDays, CalendarSearch, ChevronLeft, ChevronRight, MapPin, Search, Tag, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { type EventListParams, listEvents } from "@/api/events"
 import { CityCombobox } from "@/components/city-combobox"
@@ -80,7 +81,10 @@ export function EventListPage() {
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4">
         <div className="flex min-w-48 flex-1 flex-col gap-1.5">
-          <Label htmlFor="q">Buscar</Label>
+          <Label htmlFor="q">
+            <Search className="size-3.5 text-muted-foreground" />
+            Buscar
+          </Label>
           <Input
             id="q"
             placeholder="Nome do evento ou local"
@@ -90,12 +94,18 @@ export function EventListPage() {
         </div>
 
         <div className="flex w-44 flex-col gap-1.5">
-          <Label htmlFor="city">Cidade</Label>
+          <Label htmlFor="city">
+            <MapPin className="size-3.5 text-muted-foreground" />
+            Cidade
+          </Label>
           <CityCombobox id="city" value={city} onChange={setCity} placeholder="Qualquer cidade" />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label>Categoria</Label>
+          <Label>
+            <Tag className="size-3.5 text-muted-foreground" />
+            Categoria
+          </Label>
           <Select
             value={category}
             onValueChange={(value) => setCategory(value as EventCategory | typeof CATEGORY_FILTER_ALL)}
@@ -112,7 +122,10 @@ export function EventListPage() {
         </div>
 
         <div className="flex w-44 flex-col gap-1.5">
-          <Label htmlFor="date">Data</Label>
+          <Label htmlFor="date">
+            <CalendarDays className="size-3.5 text-muted-foreground" />
+            Data
+          </Label>
           <DatePicker id="date" value={date} onChange={setDate} />
         </div>
 
@@ -125,6 +138,7 @@ export function EventListPage() {
 
         {hasActiveFilters && (
           <Button type="button" variant="ghost" onClick={handleClear}>
+            <X />
             Limpar
           </Button>
         )}
@@ -137,9 +151,10 @@ export function EventListPage() {
           ))}
         </div>
       ) : !data || data.results.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">
-          Nenhum evento encontrado com esses filtros.
-        </p>
+        <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
+          <CalendarSearch className="size-8" />
+          <p>Nenhum evento encontrado com esses filtros.</p>
+        </div>
       ) : (
         <>
           {availableEvents.length > 0 ? (
@@ -194,6 +209,7 @@ export function EventListPage() {
                 disabled={!data.previous || isPlaceholderData}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
+                <ChevronLeft />
                 Anterior
               </Button>
               <Button
@@ -204,6 +220,7 @@ export function EventListPage() {
                 onClick={() => setPage((p) => p + 1)}
               >
                 Próxima
+                <ChevronRight />
               </Button>
             </div>
           </div>

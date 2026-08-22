@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Calendar, MapPin, Pencil } from "lucide-react"
+import { ArrowLeft, Calendar, Drama, MapPin, Pencil } from "lucide-react"
 import { useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { getEvent } from "@/api/events"
@@ -136,7 +136,7 @@ function EventDetailContent({ event, user }: { event: Event; user: User | null }
             <div className="flex flex-col gap-1.5 pt-2">
               <h2 className="text-lg font-medium">Organizado por</h2>
               <p className="flex items-center gap-2 text-muted-foreground">
-                <span aria-hidden>🎭</span>
+                <Drama className="size-4 shrink-0" />
                 {event.organizer_name}
               </p>
             </div>

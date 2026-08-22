@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Calendar, CheckCircle2, MapPin, XCircle } from "lucide-react"
+import { Calendar, CalendarClock, CheckCircle2, CreditCard, Lock, MapPin, User, XCircle } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom"
 import { getEvent } from "@/api/events"
@@ -338,6 +338,7 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
                 disabled={isReserving || effectiveQuantity === 0}
                 className="w-full"
               >
+                <CheckCircle2 />
                 {isReserving ? "Reservando..." : "Confirmar reserva"}
               </Button>
             </CardContent>
@@ -370,7 +371,10 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
           <CardContent>
             <form onSubmit={handlePay} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="card_number">Número do cartão</Label>
+                <Label htmlFor="card_number">
+                  <CreditCard className="size-3.5 text-muted-foreground" />
+                  Número do cartão
+                </Label>
                 <Input
                   id="card_number"
                   inputMode="numeric"
@@ -387,7 +391,10 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="card_name">Nome no cartão (opcional)</Label>
+                <Label htmlFor="card_name">
+                  <User className="size-3.5 text-muted-foreground" />
+                  Nome no cartão (opcional)
+                </Label>
                 <Input
                   id="card_name"
                   autoComplete="cc-name"
@@ -398,7 +405,10 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="expiry">Validade (opcional)</Label>
+                  <Label htmlFor="expiry">
+                    <CalendarClock className="size-3.5 text-muted-foreground" />
+                    Validade (opcional)
+                  </Label>
                   <Input
                     id="expiry"
                     inputMode="numeric"
@@ -409,7 +419,10 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="cvv">CVV (opcional)</Label>
+                  <Label htmlFor="cvv">
+                    <Lock className="size-3.5 text-muted-foreground" />
+                    CVV (opcional)
+                  </Label>
                   <Input
                     id="cvv"
                     inputMode="numeric"
@@ -424,6 +437,7 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
               {paymentError && <p className="text-sm text-destructive">{paymentError}</p>}
 
               <Button type="submit" disabled={isPaying} className="w-full">
+                <CreditCard />
                 {isPaying ? "Processando..." : `Pagar ${formatCurrency(total)}`}
               </Button>
 

@@ -3,7 +3,10 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   Calendar,
+  CalendarX2,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   MapPin,
   QrCode,
   XCircle,
@@ -73,7 +76,10 @@ function GateEventPicker({ onSelect }: { onSelect: (event: Event) => void }) {
           ))}
         </div>
       ) : !data || data.count === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">Nenhum evento publicado no momento.</p>
+        <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
+          <CalendarX2 className="size-8" />
+          <p>Nenhum evento publicado no momento.</p>
+        </div>
       ) : (
         <>
           <div className="flex flex-col gap-3">
@@ -121,6 +127,7 @@ function GateEventPicker({ onSelect }: { onSelect: (event: Event) => void }) {
                 disabled={!data.previous || isPlaceholderData}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
+                <ChevronLeft />
                 Anterior
               </Button>
               <Button
@@ -131,6 +138,7 @@ function GateEventPicker({ onSelect }: { onSelect: (event: Event) => void }) {
                 onClick={() => setPage((p) => p + 1)}
               >
                 Próxima
+                <ChevronRight />
               </Button>
             </div>
           </div>

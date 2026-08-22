@@ -1,3 +1,4 @@
+import { Lock, Mail, User, UserPlus } from "lucide-react"
 import { useState } from "react"
 import { Link, Navigate, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
@@ -62,7 +63,10 @@ export function RegisterPage() {
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="first_name">Nome</Label>
+                <Label htmlFor="first_name">
+                  <User className="size-3.5 text-muted-foreground" />
+                  Nome
+                </Label>
                 <Input
                   id="first_name"
                   autoComplete="given-name"
@@ -82,7 +86,10 @@ export function RegisterPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">E-mail</Label>
+              <Label htmlFor="email">
+                <Mail className="size-3.5 text-muted-foreground" />
+                E-mail
+              </Label>
               <Input
                 id="email"
                 type="email"
@@ -98,7 +105,10 @@ export function RegisterPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Senha</Label>
+              <Label htmlFor="password">
+                <Lock className="size-3.5 text-muted-foreground" />
+                Senha
+              </Label>
               <PasswordInput
                 id="password"
                 autoComplete="new-password"
@@ -114,7 +124,10 @@ export function RegisterPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="confirm_password">Confirmar senha</Label>
+              <Label htmlFor="confirm_password">
+                <Lock className="size-3.5 text-muted-foreground" />
+                Confirmar senha
+              </Label>
               <PasswordInput
                 id="confirm_password"
                 autoComplete="new-password"
@@ -130,6 +143,7 @@ export function RegisterPage() {
             </div>
 
             <Button type="submit" disabled={isSubmitting} className="mt-2">
+              <UserPlus />
               {isSubmitting ? "Criando conta..." : "Criar conta"}
             </Button>
 

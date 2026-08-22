@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Search } from "lucide-react"
+import { Banknote, CalendarClock, MapPin, Search, Users } from "lucide-react"
 import { useState } from "react"
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
 import { searchCatalog } from "@/api/catalog"
@@ -415,7 +415,10 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="venue_name">Local</Label>
+                <Label htmlFor="venue_name">
+                  <MapPin className="size-3.5 text-muted-foreground" />
+                  Local
+                </Label>
                 <Input
                   id="venue_name"
                   required
@@ -428,7 +431,10 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="city">Cidade</Label>
+                <Label htmlFor="city">
+                  <MapPin className="size-3.5 text-muted-foreground" />
+                  Cidade
+                </Label>
                 <Input
                   id="city"
                   required
@@ -453,7 +459,10 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="date_time">Data e hora</Label>
+                <Label htmlFor="date_time">
+                  <CalendarClock className="size-3.5 text-muted-foreground" />
+                  Data e hora
+                </Label>
                 <DateTimePicker
                   id="date_time"
                   aria-invalid={!!fieldErrors.date_time}
@@ -465,7 +474,10 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="capacity">Capacidade</Label>
+                <Label htmlFor="capacity">
+                  <Users className="size-3.5 text-muted-foreground" />
+                  Capacidade
+                </Label>
                 <Input
                   id="capacity"
                   type="number"
@@ -481,7 +493,10 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="price">Preço (R$)</Label>
+                <Label htmlFor="price">
+                  <Banknote className="size-3.5 text-muted-foreground" />
+                  Preço (R$)
+                </Label>
                 <Input
                   id="price"
                   type="number"
