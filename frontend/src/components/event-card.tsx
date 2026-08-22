@@ -127,12 +127,17 @@ export function EventCard({ event }: { event: Event }) {
           )}
         </div>
 
-        {event.age_rating && (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <AgeRatingBadge rating={event.age_rating} />
-            {AGE_RATING_LABEL[event.age_rating]}
-          </p>
-        )}
+        {/* Always takes up a line — even when empty — so a card with a
+         * rating and one without stay exactly the same height, instead of
+         * every row in the grid only being as tall as its tallest card. */}
+        <p className="flex h-4 items-center gap-1.5 text-xs text-muted-foreground">
+          {event.age_rating && (
+            <>
+              <AgeRatingBadge rating={event.age_rating} />
+              {AGE_RATING_LABEL[event.age_rating]}
+            </>
+          )}
+        </p>
       </CardContent>
     </Card>
   )

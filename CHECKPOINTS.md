@@ -1926,3 +1926,40 @@ no lugar do ícone genérico `ShieldAlert` usado antes.
   certo; dropdown de Classificação no formulário do organizador com as 6 opções coloridas
   corretamente e o valor escolhido refletido no próprio trigger do select. `tsc --noEmit` e
   `oxlint` limpos.
+
+### ✅ Bugfix — cards com faixa etária ficavam mais altos que os sem
+
+A linha da faixa etária só era renderizada quando `event.age_rating` existia — cards sem
+classificação simplesmente não tinham essa linha, deixando linhas do grid com evento classificado
+visivelmente mais altas que linhas só com eventos sem classificação (o grid estica todo card de
+uma linha até o mais alto dela, mas linhas diferentes do grid não têm relação entre si).
+
+- **`event-card.tsx`**: a linha da faixa etária agora é sempre renderizada (`h-4` fixo), com o
+  selo+texto só por dentro quando existe `age_rating` — em vez de sumir a linha inteira, ela fica
+  vazia. Todo card ocupa exatamente o mesmo espaço agora, tenha ou não classificação.
+- Verificado com Playwright: alturas de todos os cards da grade lidas via `getBoundingClientRect()`
+  — todas idênticas, cards com e sem faixa etária misturados na mesma página. `tsc --noEmit` e
+  `oxlint` limpos.
+
+### ✅ Melhoria — esqueleto de loading durante os filtros, em vez de troca brusca dos cards
+
+Pedido do usuário: ao digitar num filtro (nome, local, data), a troca de resultados era instantânea
+e brusca — os cards antigos ficavam na tela até o novo resultado chegar e substituir tudo de uma
+vez ("corte/piscada"), efeito colateral do `placeholderData: keepPreviousData` (evita a lista
+sumir enquanto busca, mas não evita a troca abrupta quando o resultado novo chega).
+
+- **`EventListPage.tsx`**: a grade agora usa `isFetching` (não `isLoading`, que só cobre a
+  primeira busca de todas — com dado em cache de uma busca anterior, `isLoading` já vem `false`
+  mesmo com uma nova busca em andamento) pra decidir entre mostrar o esqueleto de sempre ou os
+  cards — qualquer busca em andamento (filtro novo ou paginação) mostra o esqueleto no lugar da
+  grade, em vez de deixar o resultado antigo visível até trocar de uma vez.
+- O rodapé (contagem + botões Anterior/Próxima) foi extraído do bloco condicional e passou a
+  depender só de `data` existir (que o `keepPreviousData` garante continuar preenchido durante o
+  refetch) — assim ele não pisca junto com a grade a cada busca, só o conteúdo dos cards é trocado
+  pelo esqueleto.
+- **Verificado com Playwright**: interceptei a requisição de `/api/events/` com um atraso artificial
+  de 1.2s (rede local é rápida demais pra pegar o estado intermediário de outro jeito) e capturei
+  3 momentos digitando "Batman" no filtro — antes (grade normal com a contagem antiga), durante
+  (esqueleto de 6 cards, rodapé com a contagem antiga intacto embaixo) e depois (resultado certo,
+  "1 evento(s) encontrado(s)", sem nenhum corte perceptível na transição). `tsc --noEmit` e
+  `oxlint` limpos.

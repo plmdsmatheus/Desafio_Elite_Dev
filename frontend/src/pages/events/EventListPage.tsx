@@ -52,7 +52,13 @@ export function EventListPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQ, debouncedCity, category, date, showUnavailable])
 
-  const { data, isLoading, isPlaceholderData } = useQuery({
+  // `isFetching` (not `isLoading`, which misses refetches once there's
+  // already cached data) drives the skeleton — with `keepPreviousData`, the
+  // old results would otherwise stay on screen until the new page swaps in
+  // all at once, an abrupt cut every time a filter or page changes. Showing
+  // the skeleton for that in-between stretch instead makes it read as a
+  // deliberate transition.
+  const { data, isFetching, isPlaceholderData } = useQuery({
     queryKey: ["events", filters, page],
     queryFn: () => listEvents({ ...filters, page }),
     placeholderData: keepPreviousData,
@@ -144,7 +150,7 @@ export function EventListPage() {
         )}
       </div>
 
-      {isLoading ? (
+      {isFetching ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-72 w-full" />
@@ -198,33 +204,39 @@ export function EventListPage() {
               </div>
             </div>
           )}
-
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">{data.count} evento(s) encontrado(s)</p>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!data.previous || isPlaceholderData}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                <ChevronLeft />
-                Anterior
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!data.next || isPlaceholderData}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Próxima
-                <ChevronRight />
-              </Button>
-            </div>
-          </div>
         </>
+      )}
+
+      {/* Stays put across a refetch (thanks to keepPreviousData, `data` is
+       * still the previous page while the skeleton above is showing) so the
+       * count/pagination controls don't blink out and back on every filter
+       * change — only the grid above does. */}
+      {data && data.results.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{data.count} evento(s) encontrado(s)</p>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!data.previous || isPlaceholderData}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft />
+              Anterior
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!data.next || isPlaceholderData}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Próxima
+              <ChevronRight />
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )
