@@ -1,6 +1,7 @@
-import { Calendar, MapPin, ShieldAlert } from "lucide-react"
+import { Calendar, MapPin } from "lucide-react"
 import { type MouseEvent, useRef, useState } from "react"
 import { Link } from "react-router-dom"
+import { AgeRatingBadge } from "@/components/age-rating-badge"
 import { EventThumbnail } from "@/components/event-thumbnail"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -128,7 +129,7 @@ export function EventCard({ event }: { event: Event }) {
 
         {event.age_rating && (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <ShieldAlert className="size-3.5 shrink-0" />
+            <AgeRatingBadge rating={event.age_rating} />
             {AGE_RATING_LABEL[event.age_rating]}
           </p>
         )}

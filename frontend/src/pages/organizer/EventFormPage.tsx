@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
 import { searchCatalog } from "@/api/catalog"
 import { createEvent, type EventFormInput, getEvent, updateEvent } from "@/api/events"
+import { AgeRatingBadge } from "@/components/age-rating-badge"
 import { CancelEventDialog } from "@/components/cancel-event-dialog"
 import { EventThumbnail } from "@/components/event-thumbnail"
 import { PublishEventDialog } from "@/components/publish-event-dialog"
@@ -395,7 +396,10 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
                     <SelectItem value={AGE_RATING_UNSET}>Sem classificação</SelectItem>
                     {Object.entries(AGE_RATING_LABEL).map(([value, label]) => (
                       <SelectItem key={value} value={value}>
-                        {label}
+                        <span className="flex items-center gap-1.5">
+                          <AgeRatingBadge rating={value as Exclude<EventAgeRating, "">} />
+                          {label}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>

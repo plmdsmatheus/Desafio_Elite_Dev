@@ -1880,3 +1880,49 @@ configuradas) o que cada uma realmente oferece:
   ícone + texto aparecem certinho abaixo do preço, cards sem classificação continuam sem a linha,
   sem buraco no layout. Evento e classificações de teste removidos/revertidos depois.
 - `tsc --noEmit` e `oxlint` limpos.
+
+### ✅ Correção de dados — nenhum evento do seed tinha faixa etária, feature parecia não funcionar
+
+Usuário testou logo depois e reportou "não aparece a faixa etária no card" — não era bug de
+código: `seed_demo_data.py` cria os eventos direto com `Event.objects.create(...)`, sem passar
+pela busca de catálogo, então nenhum evento semeado jamais teve `age_rating` preenchido, e os dois
+que eu tinha marcado manualmente pra tirar print durante a verificação foram revertidos ao fim
+daquela sessão. Card e lógica sempre estiveram corretos; só não tinha dado nenhum pra mostrar.
+
+- Busquei ao vivo (mesmo helper `TMDbProvider._fetch_br_certification`/Ticketmaster
+  `ageRestrictions`, já testados) a classificação real dos 5 filmes reais do seed e o
+  `ageRestrictions` real dos 7 shows: **Divertida Mente 2** → `L`, **Coringa: Delírio a Dois** →
+  `16`, **Batman** → `14`, **Duna: Parte Dois** (o evento "flagship") → `14`. **Vingadores: Doutor
+  Destino** genuinely veio sem nenhuma entrada BR — é um filme ainda não lançado, sem classificação
+  atribuída ainda; documentei isso com um comentário no seed em vez de simplesmente deixar em
+  branco sem explicação. Os 7 shows do Ticketmaster (Wicked, Chicago, STOMP, Blue Man Group, Dear
+  Evan Hansen, SIX, Hamilton) vieram todos com `legalAgeEnforced: false` ou ausente — nenhum
+  ganhou `age_rating`, correto pra musicais de família.
+- `seed_demo_data.py`: os 4 valores reais confirmados entram como dado estático nos dicts do seed
+  (`age_rating=Event.AgeRating.FREE/SIXTEEN/FOURTEEN`), no mesmo espírito de imagem/sinopse
+  já embutidas como resposta real da API no momento em que o seed foi escrito — não uma chamada de
+  rede a cada `docker compose up` (mantém o seed funcionando sem exigir chave de API configurada,
+  mesma filosofia do resto do projeto).
+- Rodei `seed_demo_data` de novo (idempotente, só atualiza os eventos existentes) e confirmei ao
+  vivo em `/eventos`: "Divertida Mente 2" mostra "Livre", "Coringa: Delírio a Dois" mostra
+  "16 anos", "Batman" mostra "14 anos" — ícone + texto certinhos abaixo do preço. Suíte do backend
+  (123 testes) sem regressão.
+
+### ✅ Ajuste — símbolo genérico trocado pelo pictograma real da classificação indicativa
+
+Usuário mandou a referência visual dos selos oficiais do ClassInd (quadrado colorido por faixa —
+verde "L", azul "10", amarelo "12", laranja "14", vermelho "16", preto "18") e pediu esse símbolo
+no lugar do ícone genérico `ShieldAlert` usado antes.
+
+- **`components/age-rating-badge.tsx`** (novo): `AgeRatingBadge({ rating })` — quadradinho
+  colorido (`size-4`, `rounded-[3px]`) com o próprio valor da faixa dentro, cor por faixa igual à
+  referência (mesmas 6 cores do ClassInd oficial, não uma paleta arbitrária).
+- **`event-card.tsx`**: `ShieldAlert` trocado pelo `AgeRatingBadge` na linha abaixo do preço.
+- **`EventFormPage.tsx`**: o mesmo badge aplicado em cada opção do `Select` de Classificação (cada
+  item já mostra um valor de faixa específico — mesmo caso de uso do card), o rótulo genérico do
+  campo continua com `ShieldAlert` (não há uma faixa única pra ele representar).
+- Verificado ao vivo via Playwright: cards com "Divertida Mente 2" (verde "L"), "Batman"/"Duna:
+  Parte Dois" (laranja "14"), "Coringa: Delírio a Dois" (vermelho "16") mostrando o selo colorido
+  certo; dropdown de Classificação no formulário do organizador com as 6 opções coloridas
+  corretamente e o valor escolhido refletido no próprio trigger do select. `tsc --noEmit` e
+  `oxlint` limpos.
