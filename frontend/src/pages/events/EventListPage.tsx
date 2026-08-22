@@ -1,10 +1,13 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
-import { useState } from "react"
+import { CalendarDays, CalendarSearch, ChevronLeft, ChevronRight, MapPin, Search, Tag, X } from "lucide-react"
+import { useEffect, useState } from "react"
 import { type EventListParams, listEvents } from "@/api/events"
+import { CityCombobox } from "@/components/city-combobox"
 import { EventCard } from "@/components/event-card"
-import { EventCarousel } from "@/components/event-carousel"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -13,13 +16,41 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import type { EventCategory } from "@/types"
 
 const CATEGORY_FILTER_ALL = "all"
+const DEBOUNCE_MS = 400
 
 export function EventListPage() {
-  const [draft, setDraft] = useState({ q: "", city: "", category: CATEGORY_FILTER_ALL, date: "" })
-  const [filters, setFilters] = useState<EventListParams>({})
+  const [q, setQ] = useState("")
+  const [city, setCity] = useState("")
+  const [category, setCategory] = useState<EventCategory | typeof CATEGORY_FILTER_ALL>(
+    CATEGORY_FILTER_ALL,
+  )
+  const [date, setDate] = useState("")
+  const [showUnavailable, setShowUnavailable] = useState(false)
   const [page, setPage] = useState(1)
+
+  const debouncedQ = useDebouncedValue(q, DEBOUNCE_MS)
+  const debouncedCity = useDebouncedValue(city, DEBOUNCE_MS)
+
+  const filters: EventListParams = {
+    q: debouncedQ,
+    city: debouncedCity,
+    category: category === CATEGORY_FILTER_ALL ? "" : category,
+    date,
+    show_unavailable: showUnavailable,
+  }
+
+  // Every filter here is already the value the query itself uses (text
+  // fields debounced, everything else instant) — a new search always starts
+  // back on page 1, same as the old "Buscar" submit used to do.
+  useEffect(() => {
+    setPage(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQ, debouncedCity, category, date, showUnavailable])
 
   const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: ["events", filters, page],
@@ -27,24 +58,15 @@ export function EventListPage() {
     placeholderData: keepPreviousData,
   })
 
-  function handleSearch(event: React.FormEvent) {
-    event.preventDefault()
-    setPage(1)
-    setFilters({
-      q: draft.q,
-      city: draft.city,
-      category: draft.category === CATEGORY_FILTER_ALL ? "" : (draft.category as EventListParams["category"]),
-      date: draft.date,
-    })
-  }
-
   function handleClear() {
-    setDraft({ q: "", city: "", category: CATEGORY_FILTER_ALL, date: "" })
-    setFilters({})
-    setPage(1)
+    setQ("")
+    setCity("")
+    setCategory(CATEGORY_FILTER_ALL)
+    setDate("")
+    setShowUnavailable(false)
   }
 
-  const hasActiveFilters = Object.values(filters).some(Boolean)
+  const hasActiveFilters = !!(q || city || category !== CATEGORY_FILTER_ALL || date || showUnavailable)
   const upcomingEvents = data ? data.results.filter((event) => event.effective_status !== "completed") : []
   const completedEvents = data ? data.results.filter((event) => event.effective_status === "completed") : []
   const availableEvents = upcomingEvents.filter((event) => event.tickets_available > 0)
@@ -57,38 +79,36 @@ export function EventListPage() {
         <p className="text-muted-foreground">Shows e sessões de filme com ingressos disponíveis.</p>
       </div>
 
-      <form
-        onSubmit={handleSearch}
-        className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4"
-      >
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4">
         <div className="flex min-w-48 flex-1 flex-col gap-1.5">
-          <label htmlFor="q" className="text-sm font-medium">
+          <Label htmlFor="q">
+            <Search className="size-3.5 text-muted-foreground" />
             Buscar
-          </label>
+          </Label>
           <Input
             id="q"
             placeholder="Nome do evento ou local"
-            value={draft.q}
-            onChange={(e) => setDraft((d) => ({ ...d, q: e.target.value }))}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
           />
         </div>
 
-        <div className="flex w-40 flex-col gap-1.5">
-          <label htmlFor="city" className="text-sm font-medium">
+        <div className="flex w-44 flex-col gap-1.5">
+          <Label htmlFor="city">
+            <MapPin className="size-3.5 text-muted-foreground" />
             Cidade
-          </label>
-          <Input
-            id="city"
-            value={draft.city}
-            onChange={(e) => setDraft((d) => ({ ...d, city: e.target.value }))}
-          />
+          </Label>
+          <CityCombobox id="city" value={city} onChange={setCity} placeholder="Qualquer cidade" />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Categoria</span>
+          <Label>
+            <Tag className="size-3.5 text-muted-foreground" />
+            Categoria
+          </Label>
           <Select
-            value={draft.category}
-            onValueChange={(value) => setDraft((d) => ({ ...d, category: value }))}
+            value={category}
+            onValueChange={(value) => setCategory(value as EventCategory | typeof CATEGORY_FILTER_ALL)}
           >
             <SelectTrigger className="w-32">
               <SelectValue />
@@ -101,25 +121,28 @@ export function EventListPage() {
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="date" className="text-sm font-medium">
+        <div className="flex w-44 flex-col gap-1.5">
+          <Label htmlFor="date">
+            <CalendarDays className="size-3.5 text-muted-foreground" />
             Data
-          </label>
-          <Input
-            id="date"
-            type="date"
-            value={draft.date}
-            onChange={(e) => setDraft((d) => ({ ...d, date: e.target.value }))}
-          />
+          </Label>
+          <DatePicker id="date" value={date} onChange={setDate} />
         </div>
 
-        <Button type="submit">Buscar</Button>
+        <div className="flex items-center gap-2 pb-2">
+          <Switch id="show_unavailable" checked={showUnavailable} onCheckedChange={setShowUnavailable} />
+          <Label htmlFor="show_unavailable" className="font-normal text-muted-foreground">
+            Mostrar esgotados/realizados
+          </Label>
+        </div>
+
         {hasActiveFilters && (
           <Button type="button" variant="ghost" onClick={handleClear}>
+            <X />
             Limpar
           </Button>
         )}
-      </form>
+      </div>
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -128,24 +151,13 @@ export function EventListPage() {
           ))}
         </div>
       ) : !data || data.results.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">
-          Nenhum evento encontrado com esses filtros.
-        </p>
+        <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
+          <CalendarSearch className="size-8" />
+          <p>Nenhum evento encontrado com esses filtros.</p>
+        </div>
       ) : (
         <>
-          {page === 1 ? (
-            availableEvents.length > 0 ? (
-              <EventCarousel events={availableEvents} />
-            ) : soldOutEvents.length > 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Todos os eventos desta página estão esgotados — veja abaixo.
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Todos os eventos desta página já foram realizados — veja abaixo.
-              </p>
-            )
-          ) : availableEvents.length > 0 ? (
+          {availableEvents.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {availableEvents.map((event) => (
                 <EventCard key={event.id} event={event} />
@@ -197,6 +209,7 @@ export function EventListPage() {
                 disabled={!data.previous || isPlaceholderData}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
+                <ChevronLeft />
                 Anterior
               </Button>
               <Button
@@ -207,6 +220,7 @@ export function EventListPage() {
                 onClick={() => setPage((p) => p + 1)}
               >
                 Próxima
+                <ChevronRight />
               </Button>
             </div>
           </div>

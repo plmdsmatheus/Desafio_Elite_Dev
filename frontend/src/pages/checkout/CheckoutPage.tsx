@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Calendar, CheckCircle2, MapPin, XCircle } from "lucide-react"
+import { Calendar, CalendarClock, CheckCircle2, CreditCard, Lock, MapPin, User, XCircle } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom"
 import { getEvent } from "@/api/events"
 import { createReservation, payReservation, releaseReservation } from "@/api/reservations"
+import { LiveAvailability } from "@/components/live-availability"
 import { QuantityStepper } from "@/components/quantity-stepper"
 import { SeatMapPicker } from "@/components/seat-map-picker"
 import { Button } from "@/components/ui/button"
@@ -83,7 +84,7 @@ export function CheckoutPage() {
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline">
-              <Link to="/">Voltar para a lista de eventos</Link>
+              <Link to="/eventos">Voltar para a lista de eventos</Link>
             </Button>
           </CardContent>
         </Card>
@@ -279,62 +280,81 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
       <StepIndicator current={step} />
 
       {step === "quantity" && (
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Revisar reserva</CardTitle>
-            <CardDescription>{event.title}</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
-              <p className="flex items-center gap-2">
-                <Calendar className="size-4 shrink-0" />
-                {formatDateTime(event.date_time)}
-              </p>
-              <p className="flex items-center gap-2">
-                <MapPin className="size-4 shrink-0" />
-                {event.venue_name}, {event.city}
-              </p>
-            </div>
-
-            {event.has_seat_map ? (
-              <div className="flex flex-col gap-2 border-t pt-4">
-                <span className="text-sm font-medium">
-                  Escolha seus assentos ({selectedSeatIds.length}/{maxQuantity})
-                </span>
-                <SeatMapPicker
-                  eventId={event.id}
-                  selectedSeatIds={selectedSeatIds}
-                  onToggleSeat={handleToggleSeat}
-                />
+        <div
+          className={cn(
+            "grid w-full gap-4",
+            event.has_seat_map ? "max-w-md" : "max-w-3xl lg:grid-cols-[1fr_320px]",
+          )}
+        >
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle>Revisar reserva</CardTitle>
+              <CardDescription>{event.title}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+                <p className="flex items-center gap-2">
+                  <Calendar className="size-4 shrink-0" />
+                  {formatDateTime(event.date_time)}
+                </p>
+                <p className="flex items-center gap-2">
+                  <MapPin className="size-4 shrink-0" />
+                  {event.venue_name}, {event.city}
+                </p>
               </div>
-            ) : (
-              <div className="flex items-center justify-between border-t pt-4">
-                <span className="text-sm font-medium">Quantidade</span>
-                <QuantityStepper value={quantity} max={maxQuantity} onChange={setQuantity} />
+
+              {event.has_seat_map ? (
+                <div className="flex flex-col gap-2 border-t pt-4">
+                  <span className="text-sm font-medium">
+                    Escolha seus assentos ({selectedSeatIds.length}/{maxQuantity})
+                  </span>
+                  <SeatMapPicker
+                    eventId={event.id}
+                    selectedSeatIds={selectedSeatIds}
+                    onToggleSeat={handleToggleSeat}
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center justify-between border-t pt-4">
+                  <span className="text-sm font-medium">Quantidade</span>
+                  <QuantityStepper value={quantity} max={maxQuantity} onChange={setQuantity} />
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>Preço unitário</span>
+                <span>{formatCurrency(event.price)}</span>
               </div>
-            )}
 
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Preço unitário</span>
-              <span>{formatCurrency(event.price)}</span>
-            </div>
+              <div className="flex items-center justify-between border-t pt-3 text-lg font-semibold">
+                <span>Total</span>
+                <span className="text-primary">{formatCurrency(total)}</span>
+              </div>
 
-            <div className="flex items-center justify-between border-t pt-3 text-lg font-semibold">
-              <span>Total</span>
-              <span className="text-primary">{formatCurrency(total)}</span>
-            </div>
+              {reservationError && <p className="text-sm text-destructive">{reservationError}</p>}
 
-            {reservationError && <p className="text-sm text-destructive">{reservationError}</p>}
+              <Button
+                onClick={handleConfirmReservation}
+                disabled={isReserving || effectiveQuantity === 0}
+                className="w-full"
+              >
+                <CheckCircle2 />
+                {isReserving ? "Reservando..." : "Confirmar reserva"}
+              </Button>
+            </CardContent>
+          </Card>
 
-            <Button
-              onClick={handleConfirmReservation}
-              disabled={isReserving || effectiveQuantity === 0}
-              className="w-full"
-            >
-              {isReserving ? "Reservando..." : "Confirmar reserva"}
-            </Button>
-          </CardContent>
-        </Card>
+          {!event.has_seat_map && (
+            <LiveAvailability
+              eventId={event.id}
+              initial={{
+                tickets_available: event.tickets_available,
+                tickets_sold: event.tickets_sold,
+                capacity: event.capacity,
+              }}
+            />
+          )}
+        </div>
       )}
 
       {step === "payment" && (
@@ -351,7 +371,10 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
           <CardContent>
             <form onSubmit={handlePay} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="card_number">Número do cartão</Label>
+                <Label htmlFor="card_number">
+                  <CreditCard className="size-3.5 text-muted-foreground" />
+                  Número do cartão
+                </Label>
                 <Input
                   id="card_number"
                   inputMode="numeric"
@@ -368,7 +391,10 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="card_name">Nome no cartão (opcional)</Label>
+                <Label htmlFor="card_name">
+                  <User className="size-3.5 text-muted-foreground" />
+                  Nome no cartão (opcional)
+                </Label>
                 <Input
                   id="card_name"
                   autoComplete="cc-name"
@@ -379,7 +405,10 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="expiry">Validade (opcional)</Label>
+                  <Label htmlFor="expiry">
+                    <CalendarClock className="size-3.5 text-muted-foreground" />
+                    Validade (opcional)
+                  </Label>
                   <Input
                     id="expiry"
                     inputMode="numeric"
@@ -390,7 +419,10 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="cvv">CVV (opcional)</Label>
+                  <Label htmlFor="cvv">
+                    <Lock className="size-3.5 text-muted-foreground" />
+                    CVV (opcional)
+                  </Label>
                   <Input
                     id="cvv"
                     inputMode="numeric"
@@ -405,6 +437,7 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
               {paymentError && <p className="text-sm text-destructive">{paymentError}</p>}
 
               <Button type="submit" disabled={isPaying} className="w-full">
+                <CreditCard />
                 {isPaying ? "Processando..." : `Pagar ${formatCurrency(total)}`}
               </Button>
 

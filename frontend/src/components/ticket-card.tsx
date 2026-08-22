@@ -1,3 +1,4 @@
+import { Armchair, CalendarDays, CheckCircle2, MapPin } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import { Link } from "react-router-dom"
 import { CancelTicketDialog } from "@/components/cancel-ticket-dialog"
@@ -35,10 +36,14 @@ export function TicketCard({ ticket }: { ticket: Ticket }) {
             >
               {event.title}
             </Link>
-            <p className="line-clamp-1 text-xs text-muted-foreground">
+            <p className="line-clamp-1 flex items-center gap-1 text-xs text-muted-foreground">
+              <MapPin className="size-3 shrink-0" />
               {CATEGORY_LABEL[event.category] ?? event.category} · {event.venue_name}, {event.city}
             </p>
-            <p className="text-xs text-muted-foreground">{formatDateTime(event.date_time)}</p>
+            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+              <CalendarDays className="size-3 shrink-0" />
+              {formatDateTime(event.date_time)}
+            </p>
           </div>
           <Badge variant={STATUS_VARIANT[ticket.status]} className="shrink-0">
             {STATUS_LABEL[ticket.status]}
@@ -51,10 +56,14 @@ export function TicketCard({ ticket }: { ticket: Ticket }) {
           </div>
           <p className="font-mono text-sm tracking-widest">{ticket.public_code}</p>
           {ticket.seat_label && (
-            <p className="text-xs text-muted-foreground">Assento {ticket.seat_label}</p>
+            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Armchair className="size-3.5" />
+              Assento {ticket.seat_label}
+            </p>
           )}
           {ticket.status === "used" && ticket.used_at && (
-            <p className="text-xs text-muted-foreground">
+            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+              <CheckCircle2 className="size-3.5" />
               Validado em {formatDateTime(ticket.used_at)}
             </p>
           )}

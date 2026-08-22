@@ -1419,3 +1419,362 @@ já aconteceu.
 - Verificado ao vivo via Playwright: criei um evento publicado com data no passado e capacidade
   livre (nunca esgotou) — apareceu na seção "Realizados", sem contagem de ingressos, sem estar
   dentro de um `<a>`, e clicar nele não navega pra lugar nenhum. Evento de teste removido depois.
+
+## Checkpoint 11 — disponibilidade em tempo real via SSE
+
+Pedido do usuário: contagem de ingressos disponíveis em tempo real (Server-Sent Events) na etapa
+de Revisão do checkout, num layout de 2 colunas (revisão à esquerda, contagem ao vivo à direita)
+pra eventos por quantidade; e trocar o polling do mapa de assentos por SSE também. Planejado em
+modo de planejamento antes de implementar, dado o tamanho da mudança.
+
+### Achado na exploração: gunicorn de 1 worker travaria a API inteira
+
+O `Dockerfile` rodava gunicorn sem `--workers`/`--threads` (1 worker sync, default). Uma conexão
+SSE fica presa num loop `while True: sleep()` dentro desse worker — com só 1, ela bloquearia *toda*
+a API pra *todo mundo* enquanto estivesse aberta. Corrigido trocando o CMD pra
+`--worker-class gthread --workers 2 --threads 4` (built-in do gunicorn, sem dependência nova).
+Localmente o `docker-compose.yml` já roda via `runserver`, que é multi-threaded por padrão — nada
+mudou aí.
+
+### Design: SSE como transporte, poll-and-diff por baixo
+
+Sem Celery/Channels/Redis neste projeto (mesma filosofia de sempre — "computado na leitura, zero
+infra de jobs"). O SSE aqui (`apps/ticketing/sse.py`, `stream_while_changed`) é um generator que
+relê o Postgres a cada ~2s e só emite `data:` quando o payload muda — o polling não desaparece, só
+migra do cliente pro servidor e vira push. Uma linha `: heartbeat` a cada ~15s mantém a conexão
+viva atrás de proxies que fecham conexões ociosas (relevante pro Render em produção). O primeiro
+payload é emitido **antes** do primeiro `sleep()` — de propósito, pra dar pra testar a view lendo
+só o primeiro chunk sem esperar tempo real nenhum passar.
+
+- **Backend**: duas views novas em `apps/ticketing/views.py` — `EventAvailabilityStreamView`
+  (`GET /events/:id/availability/stream`, snapshot `{tickets_available, tickets_sold, capacity}`)
+  e `EventSeatMapStreamView` (`GET /events/:id/seats/stream`, mesmo formato do
+  `EventSeatMapView` de sempre, só que via generator). Mesma permissão (`IsCustomer`) do que já
+  existia. 8 testes novos em `test_sse.py` — todos instantâneos (nenhum espera segundo real,
+  graças ao "yield antes do sleep"). Suíte do backend: 108 testes (+8).
+- **Frontend**: `lib/sse.ts` (`subscribeSSE`) usa `fetch` em vez de `EventSource` nativo — o
+  `EventSource` do browser não manda headers customizados, e a autenticação da app é JWT via
+  header, sem cookies. Reconecta sozinho se a conexão cair. `hooks/use-sse.ts` embrulha isso num
+  hook, com o callback lido por ref (mesmo padrão do `onScanRef` do `QrScanner`) pra não reabrir a
+  conexão a cada render.
+  - `SeatMapPicker`: trocou `refetchInterval` por SSE, empurrando cada mensagem direto pro cache
+    do React Query (`queryClient.setQueryData(["event-seats", eventId], ...)`) — mesma chave que
+    `CheckoutPage.tsx` já invalidava em dois lugares (assento expirado, "Desistir"), então esses
+    dois pontos não precisaram mudar nada.
+  - `LiveAvailability` (novo componente): painel da coluna direita, só pra eventos sem mapa de
+    assentos — com mapa, a disponibilidade já é visual (cor de cada cadeira), então não ganhou um
+    contador redundante (decisão confirmada com o usuário antes de implementar).
+  - `CheckoutPage.tsx`: etapa de Revisão vira grid de 2 colunas só quando `!event.has_seat_map`;
+    mapa de assentos e as etapas de Pagamento/Confirmação continuam exatamente como antes.
+- Verificado ao vivo (dois "compradores" via Playwright + fetch, sem dar refresh na aba aberta):
+  cliente A na Revisão de um evento por quantidade via a contagem cair de 80 pra 77 assim que o
+  cliente B comprou 3 ingressos por fora; e um assento virar indisponível na tela de A assim que o
+  cliente B segurou aquele mesmo assento — nos dois casos sem nenhuma ação na aba do cliente A.
+  Zero erros de console. Tickets de teste cancelados depois pra não sujar o dataset de demo.
+
+**Pendente**: a segunda melhoria pedida pelo usuário (separar a home em Hero/destaques + página de
+busca com filtros) fica pra depois, por pedido explícito de ir "por partes".
+
+## Checkpoint 12 — Hero page + página de busca separada
+
+Segunda melhoria da rodada anterior: a home deixa de ser a listagem com filtros direto e vira uma
+Hero page (banner + carrossel de destaques); a busca completa com filtros ganha rota própria.
+Confirmado com o usuário antes de implementar: rota `/eventos`, banner com CTA + carrossel (não só
+mover o carrossel sem contexto), e "destaque" = mesma lógica de sempre (próximos eventos
+disponíveis, sem campo novo no backend).
+
+- **`frontend/src/pages/events/HomePage.tsx`** (novo) — banner (headline + CTA "Ver todos os
+  eventos") e um carrossel reaproveitando `EventCarousel`/`EventCard` já existentes, com a mesma
+  primeira página de `/api/events/` que o carrossel antigo já usava (sem endpoint novo).
+- **`EventListPage.tsx`** não mudou de conteúdo — só de rota: era `/`, agora é `/eventos`.
+- **`App.tsx`** — `/` aponta pra `HomePage`, `/eventos` pra `EventListPage`, `/eventos/:eventId`
+  continua igual.
+- **`layout.tsx`** — nav ganhou um link "Eventos" pra `/eventos` (antes não precisava, era a home).
+- 4 links que diziam "voltar pra lista de eventos" (`MyTicketsPage`, `CheckoutPage`,
+  `EventDetailPage` ×2 — erro de evento não encontrado e o "Voltar" com seta) apontavam pra `/` e
+  foram atualizados pra `/eventos`, já que a intenção neles sempre foi "voltar a navegar/buscar",
+  não "ir pra landing page". Redirecionamentos de guarda de rota (usuário sem permissão) e o
+  destino pós-login/cadastro continuam em `/` de propósito — aterrissar na Hero depois de logar
+  faz sentido.
+- Verificado ao vivo via Playwright: Hero carrega em `/` com o carrossel de destaques; CTA e link
+  "Eventos" da nav levam pra `/eventos` com os filtros intactos; abrir um evento e clicar em
+  "Voltar" retorna pra `/eventos`, não pra Hero. `tsc --noEmit` e `oxlint` limpos, zero erros de
+  console.
+- Ajuste rápido do usuário logo depois: já que a Hero tem o carrossel, a página `/eventos` não
+  precisava repeti-lo — trocado o carrossel da primeira página por grid padrão (mesmo componente
+  já usado nas páginas seguintes e nas seções de esgotados/realizados), removendo o import de
+  `EventCarousel` desse arquivo.
+
+### ✅ Bugfix — tilt do card "achatava" a extremidade oposta ao mouse
+
+Reportado pelo usuário: passar o mouse numa borda do card fazia a borda **oposta** ficar reta, sem
+tilt nenhum — em vez do tilt 3D simétrico esperado.
+
+- **Causa raiz**: `handleMouseMove` chamava `event.currentTarget.getBoundingClientRect()` a cada
+  movimento do mouse — mas o elemento já carregava o `transform: perspective()/rotateX()/rotateY()`
+  do frame anterior nesse momento. `getBoundingClientRect()` num elemento com rotação 3D retorna a
+  caixa delimitadora *já projetada/achatada* pela perspectiva, não a caixa original do layout. Essa
+  caixa distorcida realimentava o cálculo do próximo tilt — dependente da ordem em que o mouse
+  passava pelos lados, exatamente o sintoma relatado.
+- **Correção** (`frontend/src/components/event-card.tsx`): a medição passou a acontecer só uma vez,
+  no `onMouseEnter` (momento em que o transform está garantidamente neutro, já que `onMouseLeave`
+  sempre zera o tilt), guardada em `useRef`. `handleMouseMove` usa essa caixa cacheada em vez de
+  remedir a cada movimento.
+
+### ✅ Melhoria — brilho que seguia o mouse virou borda lima ao redor do card
+
+Pedido do usuário: trocar o "brilho" (gradiente radial que seguia o cursor, com `mix-blend-mode:
+screen`) por uma borda lima ao redor do card no hover. Removido o estado `glare` e a div do
+gradiente inteiros; o `Card` (que já tinha `ring-1 ring-foreground/10` como borda padrão) ganhou
+`hover:ring-2 hover:ring-primary` mais um glow suave (`hover:shadow-[0_0_20px_-2px_var(--brand-accent)]`)
+— puro CSS via `:hover`, sem posição de mouse envolvida, então essa parte não tinha como herdar o
+mesmo tipo de bug do tilt.
+
+- Verificado ao vivo via Playwright, reproduzindo a sequência exata do bug relatado (hover na borda
+  esquerda, depois na direita, depois no canto): tilt agora simétrico dos dois lados, borda lima
+  visível e suave no hover, sem o brilho antigo. `tsc --noEmit` e `oxlint` limpos.
+
+### ✅ Bugfix — mesmo sintoma no carrossel da Hero, causa diferente
+
+O usuário reportou o mesmo "borda reta/cortada" no carrossel da Hero page depois do fix acima —
+mas ali a causa era outra: o `CarouselContent` do shadcn/ui tem um `overflow-hidden` fixo no seu
+próprio wrapper (necessário pra esconder os slides fora da viewport), e os cards ficavam
+encostados nessa borda sem respiro nenhum — o brilho lima novo (que estoura ~20px pra fora do
+card) e o `-translate-y-0.5` do hover eram cortados numa linha reta bem na borda do carrossel.
+
+- **Correção** (`frontend/src/components/event-carousel.tsx`): `py-4` no `CarouselContent` — dá
+  espaço vertical suficiente pro glow/lift renderizarem completos antes de qualquer coisa ser
+  clipada. Não mexi no componente `carousel.tsx` em si (é um primitivo shadcn genérico); o ajuste
+  ficou local, só onde os cards de evento são usados dentro de um carrossel.
+- Verificado ao vivo via Playwright: hover na borda de cima, de baixo e nos cantos do carrossel da
+  Hero — brilho completo e redondo nas quatro bordas, sem corte. `tsc --noEmit` e `oxlint` limpos.
+
+## Checkpoint 13 — date picker do shadcn + bug de posicionamento dos dropdowns
+
+Três pedidos do usuário na mesma rodada:
+
+### ✅ Melhoria — `<input type="date">` nativo virou date picker do shadcn
+
+O filtro "Data" da busca de eventos usava o date picker nativo do navegador (cada um com uma cara
+diferente). Rodei `npx shadcn add calendar popover`, que trouxe `react-day-picker` e `date-fns`
+como dependências novas e gerou `calendar.tsx`/`popover.tsx` no estilo do projeto. Criei
+`frontend/src/components/ui/date-picker.tsx` — um `Popover` + `Calendar` que troca strings
+`"YYYY-MM-DD"` (mesmo formato que o input nativo já produzia, então `EventListPage.tsx` não
+precisou mudar como lê/envia o filtro), com o calendário localizado em português
+(`date-fns/locale`'s `ptBR`, senão vinha em inglês por padrão).
+
+- **Bloqueio real durante a implementação**: o frontend roda num container Docker com
+  `node_modules` isolado do host (mesma limitação já documentada com o `html5-qrcode`, ver
+  checkpoint anterior de portaria). `npx shadcn add` rodou no host e atualizou `package.json`
+  corretamente, mas o Vite dentro do container não via os pacotes novos — pior ainda, como
+  `App.tsx` importa todas as páginas de forma eager, o import quebrado em cascata derrubou o app
+  inteiro (nem `/login` renderizava). Precisei pedir pro usuário rodar
+  `docker compose exec frontend npm install` **e depois** `docker compose restart frontend` — só
+  o install não bastou, porque o Vite faz o pre-bundling das dependências na subida do processo,
+  não vendo pacotes instalados depois que ele já estava de pé.
+- Verificado ao vivo via Playwright depois do restart: calendário abre, navega entre meses, seleciona
+  uma data, mostra "5 de agosto de 2026" no botão, e o filtro manda `?date=2026-08-22` pro backend
+  — mesmo formato de sempre. `tsc --noEmit` e `oxlint` limpos.
+
+### ✅ Bugfix — dropdowns (`Select`) com posicionamento/tamanho quebrados
+
+Dois sintomas relatados, mesma causa: o filtro de categoria e os selects de categoria/status na
+criação/edição de evento "invadiam" campos vizinhos, e reabrir um select depois de escolher um
+valor mais abaixo na lista abria com itens espalhados acima/abaixo em vez de sempre do topo.
+
+- **Causa raiz**: `SelectContent` (`frontend/src/components/ui/select.tsx`) tinha
+  `position = "item-aligned"` como padrão — o modo do Radix que alinha o menu com o **item
+  selecionado**, não com o campo, imitando um `<select>` nativo. Isso explica os dois sintomas de
+  uma vez: a lista abre a partir de onde o item selecionado está (não do topo), e a largura do menu
+  não é sincronizada com a do campo (só o modo `"popper"` faz isso), então um trigger estreito
+  (`w-32`) podia abrir um menu deslocado o bastante pra encostar no campo do lado.
+- **Correção**: trocado o padrão pra `position = "popper"` — abre sempre logo abaixo/acima do
+  campo, itens do topo pra baixo, largura sincronizada com o trigger. Mudança de uma linha no
+  componente compartilhado, sem precisar tocar nos dois lugares que usam `Select`
+  (`EventListPage.tsx`, `EventFormPage.tsx`).
+- Verificado ao vivo via Playwright: no formulário de evento, selecionei o último item da lista de
+  Status, fechei e reabri — o menu abre exatamente colado no campo (mesmo `x`/largura do trigger),
+  não mais espalhado pela tela. `tsc --noEmit` e `oxlint` limpos.
+
+### ✅ Melhoria — faltou o campo "Data e hora" da criação/edição de evento
+
+O fix anterior só cobriu o filtro de busca (data pura); o formulário de criar/editar evento
+(`EventFormPage.tsx`) ainda usava `<input type="datetime-local">` nativo pro campo "Data e hora".
+Como esse campo precisa de data **e** hora (não só data), o `DatePicker` já existente não servia —
+criei `frontend/src/components/ui/datetime-picker.tsx`: mesmo `Calendar`+`Popover`, com um
+`<input type="time">` nativo dentro do popover pra hora (não existe primitivo de "seletor de hora"
+no shadcn — um input nativo ali dentro é o padrão deles pra isso). Continua trocando o mesmo
+formato de string `"YYYY-MM-DDTHH:mm"` que o input nativo já produzia.
+
+- **Detalhe que exigiu atenção**: `handleSubmit` fazia `new Date(dateTime).toISOString()` direto,
+  sem checar se `dateTime` estava vazio — isso só era seguro porque o `required` do input nativo
+  impedia o form de submeter vazio. Sem o input nativo, um `Date` inválido faria essa linha
+  estourar uma exceção não tratada. Adicionei uma checagem explícita no início do
+  `handleSubmit` (`if (!dateTime) { setFieldErrors(...); return }`), usando o mesmo mecanismo de
+  erro de campo que o resto do formulário já usa.
+- Verificado ao vivo via Playwright: abri o formulário de criar evento, escolhi uma data no
+  calendário, defini a hora, o botão mostrou "10 de agosto de 2026 às 20:30", e o submit completo
+  (preenchendo os outros campos obrigatórios) gerou o payload `date_time` correto e navegou de
+  volta pro painel sem erro. `tsc --noEmit` e `oxlint` limpos.
+
+## Checkpoint 14 — filtros instantâneos, combobox de cidade, esgotados/realizados opcionais
+
+Três melhorias na tela `/eventos`, planejadas em modo de planejamento antes de implementar (mudança
+multi-arquivo, com endpoint novo e um padrão de UI — combobox — inédito no projeto).
+
+### ✅ Filtros instantâneos
+
+Trocado o `draft`/`filters`/botão "Buscar" por states individuais direto na query, com
+`useDebouncedValue` (novo hook genérico, `hooks/use-debounced-value.ts`) nos dois campos de texto
+(Buscar, Cidade — 400ms) — os seletores (Categoria, Data, o novo switch) aplicam na hora, sem
+debounce, por serem eventos discretos. `<form onSubmit>` virou `<div>` (não há mais ação de
+submit). Verificado ao vivo: digitar "Wicked" rápido (delay de 50ms por tecla) gera **1 única**
+requisição à API, não uma por tecla.
+
+### ✅ Combobox de cidade (sem dependência nova)
+
+Endpoint novo `GET /api/events/cities` (`apps/events/views.py`, `EventCityListView`) — cidades
+distintas de eventos publicados, sem paginação. Frontend: `components/city-combobox.tsx`, um
+`Input` de texto livre + `Popover`/`PopoverAnchor` (não o `Command`/cmdk do shadcn — evita mais uma
+rodada de `npm install` + restart do container, como aconteceu com o date picker) mostrando até 8
+sugestões filtradas em memória; digitar sem clicar em nada continua funcionando como filtro (o
+valor do campo **é** o filtro, nunca fica preso a uma seleção da lista).
+
+- **Bug real encontrado e corrigido no processo**: o popover abria e fechava sozinho na mesma
+  interação — `onOpenChange` disparava com `false` bem na hora de focar o campo. Rastreei até o
+  `DismissableLayer` do Radix: `PopoverTrigger` tem uma exclusão especial embutida pra ignorar o
+  elemento que abriu o popover na checagem de "foco saiu pra fora"; `PopoverAnchor` (usado aqui
+  porque o padrão é "abre ao focar um input", não "abre ao clicar um botão") **não** tem essa
+  exclusão — o próprio evento de foco que abre o popover era lido como foco saindo pra fora dele,
+  fechando de novo na mesma hora. Corrigido com `onFocusOutside` no `PopoverContent`, ignorando
+  explicitamente quando o alvo é o próprio input (comparado por `ref`).
+- **Bug secundário pego no caminho**: `components/ui/input.tsx` não usava `React.forwardRef` —
+  qualquer composição `asChild` (Radix) que precisasse medir a posição do `Input` via ref
+  quebraria silenciosamente. Corrigido de forma genérica (não só pro combobox), já que `Input`
+  pode aparecer como `asChild` em qualquer lugar do app.
+- Verificado ao vivo: abrir o combobox mostra as cidades reais vindas do banco; clicar numa
+  aplica o filtro (`?city=Belo+Horizonte`); digitar uma cidade que não existe continua filtrando
+  como texto livre (mostra o estado vazio corretamente, sem travar em nenhuma sugestão).
+
+### ✅ Esgotados/realizados viram filtro opcional (`show_unavailable`)
+
+`EventListCreateView.get_queryset` ganhou um `.exclude()` (mesma condição que o `sort_rank` já
+usava pra ordenar) quando `show_unavailable` está ausente ou diferente de `"true"` — por padrão,
+a listagem só mostra o que dá pra comprar agora. Feito no backend, não só no cliente, pra manter a
+contagem/paginação (`count`/`next`/`previous`) consistente com o que a tela realmente mostra.
+Switch novo na tela ("Mostrar esgotados/realizados") liga isso. A lógica de renderizar as seções
+Esgotados/Realizados não mudou nada — com o filtro desligado o backend já não devolve esses
+eventos, então os arrays computados no cliente ficam vazios sozinhos e as seções somem.
+
+- 2 testes de regressão novos em `apps/events/tests.py` (`show_unavailable` exclui/inclui
+  corretamente; 2 testes existentes de ordenação precisaram passar `show_unavailable=true`
+  explicitamente, já que agora dependem dele pra ver os eventos que estão testando ordenar) + 1
+  teste pro endpoint `/events/cities`. Suíte do backend: 110 testes (+3, líquido).
+- Verificado ao vivo: por padrão 11 de 14 eventos aparecem (só disponíveis); ligar o switch traz
+  a contagem pra 14.
+
+## Checkpoint 15 — spinners de campo numérico e tooltip no local truncado
+
+### ✅ Melhoria — removidos os spinners nativos de `<input type="number">`
+
+Capacidade e Preço (`EventFormPage.tsx`) usam `type="number"`, que traz as setinhas de
+cima/baixo do navegador — fora do padrão visual do resto do app. Removidas globalmente em
+`index.css` (`@layer base`, regra de `-webkit-appearance`/`-moz-appearance`), não só nesses dois
+campos — qualquer input numérico futuro já nasce sem elas.
+
+### ✅ Melhoria — tooltip no local truncado do card de evento
+
+O local (`venue_name, city`) no `EventCard` já usava `line-clamp-1`, cortando o texto sem jeito de
+ver o resto. Rodei `npx shadcn add tooltip` — o `Tooltip` do Radix já vinha dentro do pacote
+`radix-ui` já instalado (mesmo já usado por `Select`/`Popover`/`Dialog`), então não precisou de
+`npm install` nem restart do container dessa vez. Adicionei `TooltipProvider` em `main.tsx`
+(precisa envolver a árvore uma vez só) e troquei o `<span>` truncado do card por
+`Tooltip`/`TooltipTrigger`/`TooltipContent`, mostrando o local completo ao passar o mouse.
+
+- Verificado ao vivo via Playwright: capacidade "150" e preço "99.90" sem nenhuma seta nativa;
+  hover no local truncado de um card mostra o tooltip com o texto completo
+  ("Cinemark Shopping Iguatemi, São Paulo"). `tsc --noEmit` e `oxlint` limpos.
+
+## Checkpoint 16 — refatoração: ciclo de vida do evento como máquina de estados
+
+Pedido do usuário: "não faz sentido criar um evento cancelado" — o `<Select>` de Status na
+criação/edição deixava escolher qualquer status livremente, sem nenhuma trava. Planejado em modo
+de planejamento (mudança de arquitetura de verdade, backend + frontend). Novo fluxo: todo evento
+nasce **rascunho** (tudo editável); publicar é uma **ação confirmada** separada; publicado só
+aceita **cancelar** ou **alterar data/hora e local**; cancelado é terminal. "Realizado" continua
+sendo só o `effective_status` computado de sempre, sem mudança.
+
+- **Backend** (`apps/events/serializers.py`, `EventWriteSerializer.validate`): a máquina de
+  estados vira a fonte da verdade, não só a UI. Criar sempre força `status=draft`, não importa o
+  que o cliente mande. Publicado rejeita qualquer campo fora de
+  `date_time`/`venue_name`/`address`/`city`/`status` (e `status` só pode ir pra `canceled`, nunca
+  voltar pra `draft`). Cancelado rejeita qualquer PATCH, ponto. Removida a checagem antiga de
+  `capacity < tickets_sold` — virou código morto (publicado já barra `capacity` de qualquer jeito,
+  e rascunho nunca tem `tickets_sold > 0`, já que pagamento exige evento publicado).
+  - Efeito colateral bom: `has_seat_map`, que só era travado na UI (checando `tickets_sold > 0`,
+    sem nada no backend), passa a ser travado de verdade assim que o evento é publicado — fechava
+    uma lacuna real onde uma chamada direta à API podia mudar o tipo de assento de um evento já
+    vendendo ingresso.
+  - 5 testes novos + 3 reescritos em `apps/events/tests.py` cobrindo cada transição (rascunho
+    aceita tudo, não pula pra cancelado; publicado aceita só data/local, não despublica; cancelado
+    rejeita qualquer PATCH, mesmo cancelar de novo). Suíte do backend: 115 testes.
+- **Frontend** (`EventFormPage.tsx`): `<Select>` de Status removido por completo.
+  - Criação: formulário de sempre, sem campo de status — botão vira "Salvar rascunho".
+  - Edição de rascunho: formulário completo, mais um botão novo **"Publicar evento"**
+    (`publish-event-dialog.tsx`, mesmo padrão de diálogo de confirmação já usado em
+    `cancel-ticket-dialog.tsx`) — PATCH mínimo, não manda o formulário inteiro.
+  - Edição de publicado: só Data/hora, Local, Cidade e Endereço ficam editáveis — o resto
+    (`disabled`, não escondido, pra manter contexto) — mais um botão novo destrutivo
+    **"Cancelar evento"** (`cancel-event-dialog.tsx`).
+  - Edição de cancelado: nenhum formulário — um card só-leitura ("Este evento foi cancelado e não
+    pode mais ser alterado"), mesmo padrão visual do card de "evento não encontrado" já usado
+    nessa página.
+  - O botão "Cancelar" que só navegava de volta (sem cancelar nada) virou **"Voltar"** — evitava
+    colidir com o "Cancelar evento" novo, que faz algo bem diferente.
+  - `api/events.ts`: `updateEvent` passa a aceitar `Partial<EventFormInput>`; `EventFormInput`
+    perdeu o campo `status` (não é mais algo que o formulário define diretamente); duas funções
+    novas e minúsculas, `publishEvent`/`cancelEvent`, cada uma um PATCH de um campo só.
+- Verificado ao vivo via Playwright, o fluxo inteiro numa passada só: criar (sem campo de status,
+  botão "Salvar rascunho") → editar o rascunho (tudo habilitado) → publicar pelo diálogo → reabrir
+  a edição (Título/Categoria/Descrição/Capacidade/Preço/assento desabilitados, Local/Cidade/
+  Endereço/Data continuam editáveis) → cancelar pelo diálogo → reabrir a edição (card só-leitura,
+  nenhum campo de formulário). Zero erros de console em qualquer etapa. `tsc --noEmit` e `oxlint`
+  limpos.
+
+## Checkpoint 17 — passe de acessibilidade: ícones no lugar de texto puro
+
+Pedido do usuário: "iremos colocar mais icones pelo site, está muito literal" — várias telas
+(barra de navegação, filtros, formulários, paginação, estados vazios) eram só texto, sem nenhum
+apoio visual. `lucide-react` já era usado em boa parte do site (cards de evento, portaria,
+checkout); esse checkpoint estende o mesmo padrão pros lugares que ainda estavam "literais",
+mantendo os ícones existentes como estavam.
+
+- **`layout.tsx`** (o mais literal — zero ícones antes): logo ganhou um `Ticket`; "Eventos" um
+  `CalendarDays`; o link específico do papel (organizador/cliente/portaria) ganha
+  `LayoutDashboard`/`Ticket`/`ScanLine` conforme o `role`; "Entrar"/"Criar conta"/"Sair" ganham
+  `LogIn`/`UserPlus`/`LogOut`.
+- **Filtros de `/eventos`** (`EventListPage.tsx`): cada `Label` (Buscar, Cidade, Categoria, Data)
+  ganha o ícone correspondente (`Search`/`MapPin`/`Tag`/`CalendarDays`) — o componente `Label` já
+  tinha `flex items-center gap-2` pronto pra isso. Botão "Limpar" ganha `X`, estado vazio ganha
+  `CalendarSearch`.
+- **Paginação** (padrão repetido em `EventListPage`, `MyTicketsPage`, `OrganizerDashboardPage`,
+  `GatePage`): "Anterior"/"Próxima" ganham `ChevronLeft`/`ChevronRight`.
+- **Estados vazios**: "Meus ingressos" ganha `Ticket`, "Meus eventos" ganha `CalendarPlus`,
+  portaria sem evento publicado ganha `CalendarX2`.
+- **`ticket-card.tsx`**: local e data do evento ganham `MapPin`/`CalendarDays`; "Assento X" ganha
+  `Armchair`; "Validado em" ganha `CheckCircle2`.
+- **Login/Cadastro**: campos de e-mail/senha ganham `Mail`/`Lock`, nome ganha `User`, botões de
+  submit ganham `LogIn`/`UserPlus`.
+- **Formulário de evento do organizador** (`EventFormPage.tsx`): Local/Cidade ganham `MapPin`,
+  Data e hora ganha `CalendarClock`, Capacidade ganha `Users`, Preço ganha `Banknote`.
+- **Checkout** (`CheckoutPage.tsx`): "Número do cartão" ganha `CreditCard`, "Nome no cartão" ganha
+  `User`, "Validade" ganha `CalendarClock`, "CVV" ganha `Lock`; botões "Confirmar reserva"/"Pagar"
+  ganham `CheckCircle2`/`CreditCard`.
+- **`EventDetailPage.tsx`**: o emoji 🎭 usado pra "Organizado por" virou o ícone `Drama` do
+  `lucide-react` — consistente com o resto do site (renderização de emoji varia por
+  SO/fonte/plataforma, ícone SVG não).
+- `tsc --noEmit` e `oxlint` limpos. Verificado ao vivo via Playwright: navegação deslogada,
+  logada como cliente e como organizador, formulário de criação de evento, detalhe de evento,
+  fluxo de checkout até a tela de pagamento — zero erros de console em qualquer tela. Reserva de
+  teste criada durante a verificação (`Divertida Mente 2`, cliente1@demo.com) removida via shell
+  do Django depois.

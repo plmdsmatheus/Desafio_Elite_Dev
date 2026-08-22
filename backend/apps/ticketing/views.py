@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import Case, IntegerField, Value, When
+from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -30,6 +31,7 @@ from .serializers import (
     TicketSerializer,
     TicketTransferSerializer,
 )
+from .sse import stream_while_changed
 from .signing import unsign_ticket_code
 
 
@@ -235,6 +237,68 @@ class EventSeatMapView(generics.ListAPIView):
     def get_queryset(self):
         event = get_object_or_404(Event, pk=self.kwargs["event_id"])
         return event.seats.select_related("ticket", "reservation")
+
+
+def _sse_response(snapshot):
+    response = StreamingHttpResponse(
+        stream_while_changed(snapshot), content_type="text/event-stream"
+    )
+    # Standard SSE headers: no-cache so an intermediary never serves a stale
+    # snapshot from cache, and X-Accel-Buffering so an nginx-style proxy in
+    # front of the app (as on Render) doesn't buffer the stream into one big
+    # delayed chunk instead of forwarding it live.
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+
+@extend_schema_view(
+    get=extend_schema(
+        tags=["events"],
+        summary="Contagem de ingressos disponíveis em tempo real (SSE)",
+        description="Server-Sent Events — só emite um evento novo quando "
+        "tickets_available muda. Pensado pra eventos sem mapa de assentos "
+        "(com mapa, a disponibilidade já é visual, assento por assento).",
+    )
+)
+class EventAvailabilityStreamView(APIView):
+    permission_classes = [IsCustomer]
+
+    def get(self, request, event_id):
+        get_object_or_404(Event, pk=event_id)
+
+        def snapshot():
+            event = get_object_or_404(Event, pk=event_id)
+            return {
+                "tickets_available": event.tickets_available,
+                "tickets_sold": event.tickets_sold,
+                "capacity": event.capacity,
+            }
+
+        return _sse_response(snapshot)
+
+
+@extend_schema_view(
+    get=extend_schema(
+        tags=["events"],
+        summary="Mapa de assentos em tempo real (SSE)",
+        description="Substitui o polling do frontend: emite o mapa de assentos completo "
+        "sempre que algum assento muda de estado. A garantia real contra venda duplicada "
+        "continua sendo o lock em hold_seats na criação da reserva, não esta leitura.",
+    )
+)
+class EventSeatMapStreamView(APIView):
+    permission_classes = [IsCustomer]
+
+    def get(self, request, event_id):
+        get_object_or_404(Event, pk=event_id)
+
+        def snapshot():
+            event = get_object_or_404(Event, pk=event_id)
+            seats = event.seats.select_related("ticket", "reservation")
+            return SeatSerializer(seats, many=True, context={"request": request}).data
+
+        return _sse_response(snapshot)
 
 
 @extend_schema_view(get=extend_schema(tags=["tickets"], summary="Meus ingressos"))

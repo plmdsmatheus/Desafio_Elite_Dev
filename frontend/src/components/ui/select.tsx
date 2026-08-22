@@ -58,7 +58,15 @@ function SelectTrigger({
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
+  // "item-aligned" (Radix's default) opens the menu aligned to the
+  // currently-selected item instead of the trigger — so a value near the
+  // bottom of the list opens with items scattered above/below the trigger,
+  // and the content's width is independent of the trigger's, which let it
+  // spill sideways into whatever sat next to a narrow trigger (the category
+  // filter, the status/category selects in the event form). "popper" always
+  // opens directly below/above the trigger, top-to-bottom, sized to at least
+  // the trigger's own width — standard dropdown behavior.
+  position = "popper",
   align = "center",
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {

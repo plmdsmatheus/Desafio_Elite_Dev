@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { ChevronLeft, ChevronRight, Ticket as TicketIcon } from "lucide-react"
 import { useState } from "react"
 import { Link, Navigate } from "react-router-dom"
 import { getMyTickets } from "@/api/tickets"
@@ -39,9 +40,10 @@ export function MyTicketsPage() {
         </div>
       ) : !data || data.count === 0 ? (
         <div className="flex flex-col items-center gap-3 py-12 text-center">
+          <TicketIcon className="size-8 text-muted-foreground" />
           <p className="text-muted-foreground">Você ainda não tem ingressos.</p>
           <Button asChild>
-            <Link to="/">Encontrar eventos</Link>
+            <Link to="/eventos">Encontrar eventos</Link>
           </Button>
         </div>
       ) : (
@@ -77,6 +79,7 @@ export function MyTicketsPage() {
                 disabled={!data.previous || isPlaceholderData}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
+                <ChevronLeft />
                 Anterior
               </Button>
               <Button
@@ -87,6 +90,7 @@ export function MyTicketsPage() {
                 onClick={() => setPage((p) => p + 1)}
               >
                 Próxima
+                <ChevronRight />
               </Button>
             </div>
           </div>

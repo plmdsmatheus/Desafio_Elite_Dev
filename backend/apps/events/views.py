@@ -4,6 +4,7 @@ from django.utils.dateparse import parse_date
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsOrganizer
 
@@ -22,6 +23,12 @@ from .serializers import EventSerializer, EventWriteSerializer
                 "category", str, required=False, enum=["show", "movie"], description="Filtra por categoria."
             ),
             OpenApiParameter("date", str, required=False, description="Filtra por data (YYYY-MM-DD)."),
+            OpenApiParameter(
+                "show_unavailable",
+                bool,
+                required=False,
+                description="Se 'true', inclui eventos esgotados e já realizados (por padrão, ficam de fora).",
+            ),
         ],
     ),
     post=extend_schema(tags=["events"], summary="Criar evento (organizador)"),
@@ -59,6 +66,14 @@ class EventListCreateView(generics.ListCreateAPIView):
             if parsed:
                 qs = qs.filter(date_time__date=parsed)
 
+        if params.get("show_unavailable") != "true":
+            # Default view: only events a customer could actually buy right
+            # now. Same conditions the rank below uses to sort sold-out/
+            # completed events last — here they're excluded outright instead,
+            # so pagination (count/next/previous) matches what's on screen
+            # rather than counting events the toggle is hiding.
+            qs = qs.exclude(_sold_count__gte=F("capacity")).exclude(date_time__lte=timezone.now())
+
         # Buyable events sort first, then sold-out ones, then events that
         # already happened ("realizado" — see Event.effective_status) —
         # otherwise a handful of them (older/earlier date_time) can bury a
@@ -93,6 +108,27 @@ class EventListCreateView(generics.ListCreateAPIView):
         self.perform_create(serializer)
         output = EventSerializer(serializer.instance)
         return Response(output.data, status=status.HTTP_201_CREATED)
+
+
+class EventCityListView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        tags=["events"],
+        summary="Cidades com eventos publicados",
+        description="Lista, sem paginação, as cidades distintas de eventos publicados — "
+        "alimenta o combobox de cidade da busca.",
+        responses={200: list[str]},
+    )
+    def get(self, request):
+        cities = (
+            Event.objects.filter(status=Event.Status.PUBLISHED)
+            .exclude(city="")
+            .values_list("city", flat=True)
+            .distinct()
+            .order_by("city")
+        )
+        return Response(list(cities))
 
 
 @extend_schema_view(

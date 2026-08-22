@@ -2,7 +2,8 @@
 
 Organizador publica eventos a partir de um catálogo externo real (Ticketmaster Discovery e
 TMDb), cliente reserva, paga (simulado) e recebe um ingresso com QR assinado, e a portaria
-valida na entrada por câmera ou código digitado.
+valida na entrada por câmera ou código digitado. Disponibilidade de ingressos/assentos
+atualiza em tempo real (Server-Sent Events) na tela de quem está comprando.
 
 Desenvolvido para o **Desafio Elite Dev** (Verzel).
 
@@ -33,10 +34,15 @@ Desenvolvido para o **Desafio Elite Dev** (Verzel).
 ## Funcionalidades
 
 **Cliente**
-- Busca e filtro de eventos publicados (nome, cidade, categoria, data), com carrossel na
-  primeira página e paginação nas seguintes.
+- Home (`/`) com banner e carrossel dos próximos eventos disponíveis; busca completa fica em
+  `/eventos`, com grid + paginação e filtros que aplicam **instantaneamente** (texto e cidade
+  com debounce, categoria/data/toggle na hora), nome do evento/local, cidade (combobox de
+  texto livre, sugestões vindas do banco), categoria, data, e um toggle opcional pra mostrar
+  esgotados/já realizados (por padrão só aparece o que dá pra comprar agora).
 - Detalhe do evento: descrição, organizador, local com mapa (Google Maps embutido) e
-  disponibilidade em tempo real (farol verde/amarelo/vermelho conforme o estoque diminui).
+  disponibilidade **em tempo real via Server-Sent Events**, o contador de ingressos (ou o mapa
+  de assentos, na revisão da compra) atualiza sozinho assim que outra pessoa compra ou solta um
+  assento, sem precisar dar refresh.
 - Reserva por **quantidade** (pista) ou por **assento específico** (mapa de poltronas, cinema/
   teatro) depende de como o organizador configurou o evento.
 - Pagamento simulado, com confirmação e recusa determinísticas (ver seção de dados de teste).
@@ -47,8 +53,12 @@ Desenvolvido para o **Desafio Elite Dev** (Verzel).
 **Organizador**
 - Painel com todos os próprios eventos (qualquer status), progresso de vendas por evento.
 - Criar/editar evento: manual ou pré-preenchido a partir de uma busca real no catálogo externo
-  (Ticketmaster ou TMDb). Liga/desliga mapa de assentos por evento (trava depois da primeira
-  venda). Cancelar um evento invalida automaticamente os ingressos já vendidos dele.
+  (Ticketmaster ou TMDb). Liga/desliga mapa de assentos por evento (trava depois de publicado).
+- **Ciclo de vida do evento como máquina de estados**, garantida no backend (não só na UI): todo
+  evento nasce **rascunho**, tudo editável livremente, invisível pro público, até o organizador
+  confirmar a **publicação** como uma ação explícita. Depois de publicado, só dá pra alterar
+  data/hora e local, ou **cancelar** o evento (o que invalida automaticamente os ingressos já
+  vendidos dele); cancelado é estado terminal.
 
 **Portaria**
 - Escolhe o evento da sessão, valida ingressos por **leitura de QR pela câmera** ou por
@@ -60,10 +70,11 @@ Desenvolvido para o **Desafio Elite Dev** (Verzel).
 | | |
 |---|---|
 | **Backend** | Django 6 + Django REST Framework, PostgreSQL, JWT (`djangorestframework-simplejwt`), `drf-spectacular` (schema OpenAPI/Swagger) |
-| **Frontend** | React 19 + TypeScript + Vite, Tailwind CSS v4, shadcn/ui (Radix), TanStack Query |
+| **Frontend** | React 19 + TypeScript + Vite, Tailwind CSS v4, shadcn/ui (Radix), TanStack Query, `lucide-react` (ícones), `react-day-picker`/`date-fns` (date picker, localizado em pt-BR) |
+| **Tempo real** | Server-Sent Events nativo (view em generator, `fetch` no cliente), sem Celery/Channels/Redis, ver seção de decisões técnicas |
 | **Integrações externas** | Ticketmaster Discovery API, TMDb API (proxeadas pelo backend a chave nunca chega no navegador) |
 | **QR** | Geração: `qrcode.react`. Leitura por câmera: `html5-qrcode`. Assinatura: `django.core.signing` (HMAC) |
-| **Deploy** | Vercel (frontend) + Render (backend, Docker) + Supabase (Postgres) |
+| **Deploy** | Vercel (frontend) + Render (backend, Docker, `gunicorn --worker-class gthread`) + Supabase (Postgres) |
 | **Local** | Docker Compose (Postgres + backend + frontend com um comando) |
 
 ## Como rodar localmente
@@ -153,9 +164,11 @@ dois fluxos sem depender de sorte.
 
 ## Testes automatizados
 
-Backend: 94 testes (`pytest` + `pytest-django`), incluindo testes de **concorrência real**,
+Backend: 115 testes (`pytest` + `pytest-django`), incluindo testes de **concorrência real**,
 threads de verdade com conexões de banco reais, não só o client de testes sequencial do Django, provando que a trava de reserva de assentos e a trava de pagamento seguram sob concorrência
-de verdade, não só na teoria.
+de verdade, não só na teoria e testes das views de SSE que leem só o primeiro chunk do stream
+(o payload é emitido antes do primeiro `sleep()` do generator), então nenhum deles espera tempo
+real passar.
 
 ```bash
 cd backend
@@ -191,6 +204,20 @@ versionada, ficou como próximo passo natural caso o projeto continue.
   JOIN na mesma consulta podiam continuar refletindo o snapshot de antes da espera. Um teste
   sequencial nunca teria pego isso. Corrigido buscando os dados relacionados numa consulta
   separada, depois de confirmar o lock.
+- **Tempo real sem infra nova.** A mesma filosofia "computado na leitura" se estende pro SSE:
+  não tem Celery, Channels nem Redis nesse projeto. A view de disponibilidade é um generator que
+  relê o Postgres a cada ~2s e só emite `data:` quando o payload muda, o polling não desaparece,
+  só migra do cliente pro servidor e vira push (`: heartbeat` a cada ~15s mantém a conexão viva
+  atrás de proxies que fecham conexões ociosas, relevante em produção). Achado ao planejar: um
+  `gunicorn` sem `--workers`/`--threads` (1 worker síncrono, o default) deixaria uma única conexão
+  SSE aberta travar a API inteira pra todo mundo enquanto ficasse aberta, trocado pro
+  `--worker-class gthread` (builtin do próprio gunicorn, sem dependência nova).
+- **Ciclo de vida do evento é uma máquina de estados de verdade, não um campo livre.** Criar um
+  evento sempre força `status=draft` no backend, não importa o que o cliente mande; publicado só
+  aceita mudar data/hora/local ou cancelar (rejeita qualquer outro campo, inclusive "voltar" pra
+  rascunho); cancelado rejeita qualquer alteração, mesmo cancelar de novo. Efeito colateral: campos
+  como `has_seat_map`, que antes só eram travados na UI, passaram a ser travados de verdade pelo
+  backend assim que o evento é publicado.
 
 ## Estrutura do repositório
 
@@ -221,18 +248,23 @@ CHECKPOINTS.md   # log detalhado de todo o processo de desenvolvimento
   — fora do escopo pedido no desafio.
 - **Transferência de ingresso** existe (cliente pra cliente, gratuita, só muda o dono). Isso é
   diferente de "revenda entre usuários" (que envolveria cobrança e não foi implementada, também fora do escopo pedido).
+- **Sem cache no proxy do catálogo externo** (Redis foi cogitado, ficou de fora — decisão
+  consciente de manter a infra simples, ver `CHECKPOINTS.md`). Cada busca do organizador no
+  Ticketmaster/TMDb chama a API real na hora; sujeito a rate limit dela em uso intenso.
 - **Render free tier dorme após inatividade** e o **Postgres do Supabase free pausa depois de
   ~1 semana sem tráfego**.
 
 ## Uso de IA
 
-Todo o desenvolvimento foi feito com **Claude Code** (Anthropic), numa sessão longa e
-contínua de conversa, não um prompt único jogado num PDF. A trajetória completa, tela por
-tela, decisão por decisão (incluindo o que foi rejeitado e por quê), está versionada em
-[`CHECKPOINTS.md`](./CHECKPOINTS.md) — um log real do processo, escrito ao longo do
-desenvolvimento, não reconstruído depois, feita também para evitar perda de contexto.
+Este projeto foi desenvolvido com **Claude Code** (Anthropic) como par de programação, sessão
+por sessão, do esqueleto do backend até os últimos ajustes de UI. `CHECKPOINTS.md` é o log real
+do processo, não um resumo escrito depois, mas o histórico incremental de cada etapa, decisão,
+bug encontrado e correção, na ordem em que aconteceram, incluindo os becos sem saída (o brilho
+que seguia o cursor no card de evento, implementado e depois trocado por uma borda lima a pedido
+do usuário; a primeira tentativa de corrigir o `node_modules` isolado do Docker só com
+`npm install`, sem o restart do container que faltava) e não só o resultado final.
 
-**O que a IA fez, sob essa direção:** O que a IA fez, sob essa direção: atuou como uma ferramenta de pair programming, sendo responsável por grande parte da implementação do código a partir das instruções e decisões definidas por mim. Minha atuação permaneceu como direcionador e revisor, intervindo sempre que identificava dificuldades, inconsistências ou divergências em relação ao que havia sido solicitado.
+**O que a IA fez, sob essa direção:** responsável por grande parte da implementação do código a partir das instruções e decisões definidas por mim. Minha atuação permaneceu como direcionador e revisor, intervindo sempre que identificava dificuldades, inconsistências ou divergências em relação ao que havia sido solicitado.
 
 Na etapa inicial do backend, a maior parte do desenvolvimento foi realizada por mim, devido à minha maior familiaridade com essa área. Já no frontend, por possuir menos experiência, enfrentei algumas dificuldades na implementação de telas e comportamentos específicos, o que tornou essa etapa mais demorada. Nesse contexto, deleguei uma parcela maior da implementação à IA, mantendo minha atuação na revisão, validação e correção de eventuais falhas.
 
