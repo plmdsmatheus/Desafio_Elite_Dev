@@ -169,3 +169,25 @@
     margin: 0;
   }
 }
+
+/* Ambient drift for the Hero page's poster collage (hero-backdrop.tsx) — slow
+ * enough to read as atmosphere, not motion. Off entirely under reduced
+ * motion, same as any other looping animation. */
+@keyframes hero-backdrop-drift {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.06);
+  }
+}
+
+.hero-backdrop-drift {
+  animation: hero-backdrop-drift 50s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-backdrop-drift {
+    animation: none;
+  }
+}

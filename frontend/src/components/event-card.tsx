@@ -1,6 +1,7 @@
 import { Calendar, MapPin } from "lucide-react"
 import { type MouseEvent, useRef, useState } from "react"
 import { Link } from "react-router-dom"
+import { AgeRatingBadge } from "@/components/age-rating-badge"
 import { EventThumbnail } from "@/components/event-thumbnail"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,7 +12,7 @@ import {
   getAvailabilityLevel,
 } from "@/lib/availability"
 import { formatCurrency, formatDateShort } from "@/lib/format"
-import { CATEGORY_BADGE_CLASS, CATEGORY_LABEL } from "@/lib/labels"
+import { AGE_RATING_LABEL, CATEGORY_BADGE_CLASS, CATEGORY_LABEL } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import type { Event } from "@/types"
 
@@ -125,6 +126,13 @@ export function EventCard({ event }: { event: Event }) {
             </span>
           )}
         </div>
+
+        {event.age_rating && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <AgeRatingBadge rating={event.age_rating} />
+            {AGE_RATING_LABEL[event.age_rating]}
+          </p>
+        )}
       </CardContent>
     </Card>
   )

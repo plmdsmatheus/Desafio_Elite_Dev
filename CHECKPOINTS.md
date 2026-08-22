@@ -1778,3 +1778,151 @@ mantendo os ícones existentes como estavam.
   fluxo de checkout até a tela de pagamento — zero erros de console em qualquer tela. Reserva de
   teste criada durante a verificação (`Divertida Mente 2`, cliente1@demo.com) removida via shell
   do Django depois.
+
+## Checkpoint 18 — bugfix do leitor de QR, Hero page com colagem de pôsteres, faixa etária
+
+Usuário reportou 1 bug e pediu 2 melhorias depois de testar a aplicação de ponta a ponta.
+
+### ✅ Bugfix — leitor de QR da portaria cortava as bordas do quadro de leitura
+
+Reproduzido com Playwright (`--use-fake-device-for-media-stream`) em várias larguras. Causa raiz:
+`qr-scanner.tsx` passava `qrbox: { width: 250, height: 250 }` fixo pro `Html5Qrcode.start()`, mas
+o container é `aspect-video` — abaixo de ~444px de largura o viewfinder real fica com menos de
+250px de altura. A lib clampa a *largura* do qrbox automaticamente quando é maior que o
+viewfinder, mas **não a altura** (só loga um aviso) — o quadro de leitura estourava por baixo e
+era cortado pelo `overflow-hidden` do próprio container, exatamente o "fora da escala" relatado.
+
+- **Correção**: `qrbox` virou uma `QrDimensionFunction` — `(viewfinderWidth, viewfinderHeight) =>
+  ({ width, height })` calculado como 70% do menor lado do viewfinder real, formato que a própria
+  lib já suporta. Nunca mais estoura, não importa a largura do container.
+- Verificado com Playwright em 1280px e 375px (o cenário problemático): quadro de leitura sempre
+  com margem visível nas quatro bordas, `boundingBox()` do vídeo confirmando 231px de altura real
+  no mobile (menor que os 250px fixos de antes) — exatamente o caso que quebrava.
+
+### ✅ Melhoria — Hero page "muito vazia" ganhou uma colagem de pôsteres
+
+Pedido: banners de filmes/shows atrás do slogan, no lugar do fundo preto liso.
+
+- **`components/hero-backdrop.tsx`** (novo, decorativo): reaproveita os próprios eventos reais já
+  buscados pela `HomePage` pro carrossel (`listEvents({})`, sem endpoint novo) — as imagens
+  (`event.image_url`) já são pôsteres/artes reais do TMDb/Ticketmaster vindas do seed. Até 6
+  pôsteres em posições fixas pré-definidas (leve rotação/deslocamento cada, `aspect-[3/4]` +
+  `object-cover` uniformizando pôsteres retrato do TMDb com imagens paisagem do Ticketmaster),
+  `pointer-events-none` (nunca disputa clique com o CTA). Duas camadas de overlay por cima
+  (gradiente + vinheta radial em `--brand-bg`) escurecem o centro, onde fica o texto, e as bordas,
+  deixando os pôsteres como textura de fundo sem brigar com o headline pela atenção. Imagem
+  quebrada só some (`onError` esconde aquele tile), não vira um placeholder — é decoração, não
+  conteúdo. Leve animação ambiente (`@keyframes hero-backdrop-drift`, zoom lentíssimo em 50s) via
+  classe nova em `index.css`, desligada com `@media (prefers-reduced-motion: reduce)`.
+  - **Ajuste de calibragem**: a primeira versão (`opacity-70` nos pôsteres, vinheta escurecendo
+    até o centro em `70%`) ficou quase invisível — testado visualmente e corrigido pra
+    `opacity-90` nos pôsteres e vinheta mais concentrada perto do centro (`transparent_20%` em vez
+    de `0%`), deixando o resto bem mais visível sem perder legibilidade do texto.
+- **`HomePage.tsx`**: a section do hero virou `relative overflow-hidden` com o `HeroBackdrop` atrás
+  do conteúdo e mais padding vertical (`py-20 sm:py-28`, antes `py-10 sm:py-16`) — o "vazio"
+  reportado também era em parte só falta de espaço mesmo. `-mx-4 sm:mx-0 sm:rounded-2xl sm:border`
+  — banner edge-to-edge no mobile, cartão arredondado com borda a partir do `sm`.
+- Sem dependência nova, sem mudança de backend. Verificado com Playwright em desktop, mobile
+  (375px) e com `prefers-reduced-motion: reduce` — zero erros de console nos três.
+
+### ✅ Melhoria — faixa etária (classificação indicativa) no card de evento
+
+Pedido: se a API externa trouxer a informação, mostrar ícone + texto abaixo do preço no card.
+Antes de implementar, confirmei ao vivo (chamadas reais às duas APIs, com as chaves já
+configuradas) o que cada uma realmente oferece:
+- **TMDb**: `/search/movie` (usado hoje na busca) não traz classificação nenhuma — só um bool
+  `adult`. A classificação brasileira de verdade (mesmos códigos da ANCINE — "14", "12", "L" etc.)
+  só vem de `GET /movie/{id}/release_dates`, filtrando `iso_3166_1 == "BR"`: **uma chamada extra
+  por filme**.
+- **Ticketmaster**: já vem no payload de busca (`ageRestrictions.legalAgeEnforced`), mas só como
+  booleano — "tem restrição de idade" ou não, sem o número.
+
+**Backend**:
+- `apps/events/models.py`: `EventAgeRating` (TextChoices a nível de módulo, mesmo padrão de
+  `EventStatus`) — `L`/`10`/`12`/`14`/`16`/`18`. Campo novo `Event.age_rating`
+  (`blank=True, default=""` — vazio = sem classificação, não aparece em lugar nenhum). Migration
+  `0003_event_age_rating`. `EventAgeRatingEnum` registrado em `ENUM_NAME_OVERRIDES`
+  (`config/settings.py`) — confirmado sem warning novo no `spectacular --fail-on-warn`.
+- `EventSerializer`/`EventWriteSerializer`: `age_rating` exposto em leitura e escrita — **não**
+  entra em `PUBLISHED_EDITABLE_FIELDS`, então já trava sozinho depois de publicado, mesma regra de
+  título/categoria, sem nenhuma lógica nova no `validate()`.
+- `apps/catalog/providers/base.py`: `CatalogItem.suggested_age_rating`. Ticketmaster preenche
+  direto (`"18"` se `legalAgeEnforced`, senão `""`) — sem chamada extra.
+- `apps/catalog/providers/tmdb.py`: como os 20 resultados de uma busca não valem 20 chamadas
+  sequenciais (o organizador ficaria esperando), a certificação de cada filme é buscada **em
+  paralelo** (`concurrent.futures.ThreadPoolExecutor`, 8 workers) logo depois da busca principal —
+  best-effort: uma falha de rede num filme vira `""`, nunca derruba a busca inteira. Prefere a
+  certificação de lançamento nos cinemas (`type == 3`) quando o título tem mais de uma entrada BR
+  (cinema vs. VOD/TV, que às vezes têm classificação diferente).
+- 8 testes novos (`apps/catalog/tests.py`): mapeamento Ticketmaster (bool→"18"/""), parsing da
+  certificação BR do TMDb (prioriza cinema, sem entrada BR retorna "", falha de rede não propaga
+  exceção), `search()` completo com `requests.get` mockado por URL confirmando que cada filme
+  recebe a certificação certa em paralelo. 2 testes novos em `apps/events/tests.py` (aceito na
+  criação, travado depois de publicado). Suíte do backend: 123 testes (+8).
+
+**Frontend**:
+- `types/index.ts`/`api/events.ts`: `age_rating`/`suggested_age_rating` (tipo `EventAgeRating`,
+  união dos 6 códigos + `""`).
+- `lib/labels.ts`: `AGE_RATING_LABEL` (mesmo padrão de `CATEGORY_LABEL`).
+- `event-card.tsx`: nova linha logo abaixo do preço/disponibilidade, só quando `event.age_rating`
+  existe — ícone `ShieldAlert` + rótulo, mesmo estilo das outras linhas de metadado do card.
+  Escopo deliberadamente restrito ao card, como pedido (não mexe em `EventDetailPage`/
+  `PurchasePanel`).
+- `EventFormPage.tsx`: novo `Select` "Classificação" ao lado de Categoria (Radix Select não aceita
+  valor vazio num item — sentinela `"none"` = "Sem classificação", convertido de/pra `""` só na UI),
+  `disabled={isPublished}` como os outros campos travados nesse estado; `applyCatalogItem` também
+  preenche a partir de `item.suggested_age_rating` ao escolher um resultado do catálogo.
+- Verificado ao vivo, ponta a ponta, com a API real do TMDb (não mockada): busquei "Duna" no
+  catálogo do organizador, cliquei no resultado — formulário preencheu "Classificação: 14 anos"
+  automaticamente (a certificação real do filme no Brasil). Salvei o rascunho, confirmei no banco
+  que persistiu `age_rating="14"`. No card de evento, testado com dois eventos reais do seed
+  marcados manualmente (`Vingadores: Doutor Destino` → "14 anos", `Divertida Mente 2` → "Livre") —
+  ícone + texto aparecem certinho abaixo do preço, cards sem classificação continuam sem a linha,
+  sem buraco no layout. Evento e classificações de teste removidos/revertidos depois.
+- `tsc --noEmit` e `oxlint` limpos.
+
+### ✅ Correção de dados — nenhum evento do seed tinha faixa etária, feature parecia não funcionar
+
+Usuário testou logo depois e reportou "não aparece a faixa etária no card" — não era bug de
+código: `seed_demo_data.py` cria os eventos direto com `Event.objects.create(...)`, sem passar
+pela busca de catálogo, então nenhum evento semeado jamais teve `age_rating` preenchido, e os dois
+que eu tinha marcado manualmente pra tirar print durante a verificação foram revertidos ao fim
+daquela sessão. Card e lógica sempre estiveram corretos; só não tinha dado nenhum pra mostrar.
+
+- Busquei ao vivo (mesmo helper `TMDbProvider._fetch_br_certification`/Ticketmaster
+  `ageRestrictions`, já testados) a classificação real dos 5 filmes reais do seed e o
+  `ageRestrictions` real dos 7 shows: **Divertida Mente 2** → `L`, **Coringa: Delírio a Dois** →
+  `16`, **Batman** → `14`, **Duna: Parte Dois** (o evento "flagship") → `14`. **Vingadores: Doutor
+  Destino** genuinely veio sem nenhuma entrada BR — é um filme ainda não lançado, sem classificação
+  atribuída ainda; documentei isso com um comentário no seed em vez de simplesmente deixar em
+  branco sem explicação. Os 7 shows do Ticketmaster (Wicked, Chicago, STOMP, Blue Man Group, Dear
+  Evan Hansen, SIX, Hamilton) vieram todos com `legalAgeEnforced: false` ou ausente — nenhum
+  ganhou `age_rating`, correto pra musicais de família.
+- `seed_demo_data.py`: os 4 valores reais confirmados entram como dado estático nos dicts do seed
+  (`age_rating=Event.AgeRating.FREE/SIXTEEN/FOURTEEN`), no mesmo espírito de imagem/sinopse
+  já embutidas como resposta real da API no momento em que o seed foi escrito — não uma chamada de
+  rede a cada `docker compose up` (mantém o seed funcionando sem exigir chave de API configurada,
+  mesma filosofia do resto do projeto).
+- Rodei `seed_demo_data` de novo (idempotente, só atualiza os eventos existentes) e confirmei ao
+  vivo em `/eventos`: "Divertida Mente 2" mostra "Livre", "Coringa: Delírio a Dois" mostra
+  "16 anos", "Batman" mostra "14 anos" — ícone + texto certinhos abaixo do preço. Suíte do backend
+  (123 testes) sem regressão.
+
+### ✅ Ajuste — símbolo genérico trocado pelo pictograma real da classificação indicativa
+
+Usuário mandou a referência visual dos selos oficiais do ClassInd (quadrado colorido por faixa —
+verde "L", azul "10", amarelo "12", laranja "14", vermelho "16", preto "18") e pediu esse símbolo
+no lugar do ícone genérico `ShieldAlert` usado antes.
+
+- **`components/age-rating-badge.tsx`** (novo): `AgeRatingBadge({ rating })` — quadradinho
+  colorido (`size-4`, `rounded-[3px]`) com o próprio valor da faixa dentro, cor por faixa igual à
+  referência (mesmas 6 cores do ClassInd oficial, não uma paleta arbitrária).
+- **`event-card.tsx`**: `ShieldAlert` trocado pelo `AgeRatingBadge` na linha abaixo do preço.
+- **`EventFormPage.tsx`**: o mesmo badge aplicado em cada opção do `Select` de Classificação (cada
+  item já mostra um valor de faixa específico — mesmo caso de uso do card), o rótulo genérico do
+  campo continua com `ShieldAlert` (não há uma faixa única pra ele representar).
+- Verificado ao vivo via Playwright: cards com "Divertida Mente 2" (verde "L"), "Batman"/"Duna:
+  Parte Dois" (laranja "14"), "Coringa: Delírio a Dois" (vermelho "16") mostrando o selo colorido
+  certo; dropdown de Classificação no formulário do organizador com as 6 opções coloridas
+  corretamente e o valor escolhido refletido no próprio trigger do select. `tsc --noEmit` e
+  `oxlint` limpos.

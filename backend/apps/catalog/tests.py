@@ -1,6 +1,7 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from requests import RequestException
 
 from apps.catalog.providers import CatalogProviderError, get_provider
 from apps.catalog.providers.base import CatalogItem
@@ -46,12 +47,19 @@ class TestProviderParsing:
         assert item.suggested_address == "Av. Palestra Italia, 1"
         assert item.suggested_city == "São Paulo"
         assert item.suggested_date_time.isoformat() == "2026-09-15T23:00:00+00:00"
+        assert item.suggested_age_rating == ""
 
     def test_ticketmaster_handles_missing_fields_without_crashing(self):
         item = TicketmasterProvider()._to_item({"id": "x1", "name": "Sem frescura", "dates": {"start": {}}})
         assert item.image_url == ""
         assert item.suggested_venue_name == ""
         assert item.suggested_date_time is None
+
+    def test_ticketmaster_maps_age_restriction_to_18(self):
+        item = TicketmasterProvider()._to_item(
+            {"id": "x2", "name": "Show +18", "dates": {"start": {}}, "ageRestrictions": {"legalAgeEnforced": True}}
+        )
+        assert item.suggested_age_rating == "18"
 
     def test_tmdb_maps_full_movie(self):
         item = TMDbProvider()._to_item(
@@ -73,6 +81,70 @@ class TestProviderParsing:
         item = TMDbProvider()._to_item({"id": 1, "title": "Sem poster"})
         assert item.image_url == ""
         assert item.suggested_date_time is None
+
+    def test_tmdb_maps_age_rating_when_passed(self):
+        item = TMDbProvider()._to_item({"id": 1, "title": "Com classificação"}, age_rating="14")
+        assert item.suggested_age_rating == "14"
+
+
+class TestTMDbCertification:
+    """`_fetch_br_certification` / the parallel fetch in `search()` — no network calls."""
+
+    def test_prefers_theatrical_release_over_others(self):
+        response_json = {
+            "results": [
+                {
+                    "iso_3166_1": "BR",
+                    "release_dates": [
+                        {"type": 4, "certification": "12"},
+                        {"type": 3, "certification": "14"},
+                    ],
+                },
+                {"iso_3166_1": "US", "release_dates": [{"type": 3, "certification": "PG-13"}]},
+            ]
+        }
+        with patch("apps.catalog.providers.tmdb.requests.get") as mock_get:
+            mock_get.return_value.json.return_value = response_json
+            mock_get.return_value.raise_for_status.return_value = None
+            cert = TMDbProvider()._fetch_br_certification(550, headers={}, auth_params={})
+        assert cert == "14"
+
+    def test_no_br_entry_returns_blank(self):
+        with patch("apps.catalog.providers.tmdb.requests.get") as mock_get:
+            mock_get.return_value.json.return_value = {"results": [{"iso_3166_1": "US", "release_dates": []}]}
+            mock_get.return_value.raise_for_status.return_value = None
+            cert = TMDbProvider()._fetch_br_certification(1, headers={}, auth_params={})
+        assert cert == ""
+
+    def test_request_failure_returns_blank_not_raises(self):
+        with patch("apps.catalog.providers.tmdb.requests.get", side_effect=RequestException("boom")):
+            cert = TMDbProvider()._fetch_br_certification(1, headers={}, auth_params={})
+        assert cert == ""
+
+    def test_search_attaches_certification_per_movie(self):
+        search_response = {"results": [{"id": 1, "title": "A"}, {"id": 2, "title": "B"}]}
+
+        def fake_get(url, params=None, headers=None, timeout=None):
+            mock_response = MagicMock()
+            mock_response.raise_for_status.return_value = None
+            if "release_dates" in url:
+                movie_id = int(url.split("/")[-2])
+                cert = "16" if movie_id == 1 else ""
+                mock_response.json.return_value = {
+                    "results": [{"iso_3166_1": "BR", "release_dates": [{"type": 3, "certification": cert}]}]
+                    if cert
+                    else []
+                }
+            else:
+                mock_response.json.return_value = search_response
+            return mock_response
+
+        with patch("apps.catalog.providers.tmdb.settings.TMDB_API_READ_ACCESS_TOKEN", "fake-token"):
+            with patch("apps.catalog.providers.tmdb.requests.get", side_effect=fake_get):
+                items = TMDbProvider().search("qualquer coisa")
+
+        by_id = {item.external_id: item.suggested_age_rating for item in items}
+        assert by_id == {"1": "16", "2": ""}
 
 
 class TestProviderRegistry:

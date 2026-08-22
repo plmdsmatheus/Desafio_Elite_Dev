@@ -1,5 +1,5 @@
 import { apiClient } from "@/api/client"
-import type { Event, EventCategory, EventSourceProvider, Paginated, Seat } from "@/types"
+import type { Event, EventAgeRating, EventCategory, EventSourceProvider, Paginated, Seat } from "@/types"
 
 // No `status` here on purpose: creation always lands as a draft (the backend
 // forces it regardless of what's sent), and publishing/canceling afterwards
@@ -12,6 +12,7 @@ export interface EventFormInput {
   description: string
   image_url: string
   category: EventCategory
+  age_rating: EventAgeRating
   venue_name: string
   address: string
   city: string

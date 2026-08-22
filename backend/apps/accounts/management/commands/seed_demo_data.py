@@ -129,6 +129,11 @@ EXTRA_REAL_EVENTS = [
         title="Vingadores: Doutor Destino",
         source_provider=Event.SourceProvider.TMDB,
         source_id="1003596",
+        # No age_rating here on purpose, not an oversight: TMDb's real
+        # release_dates response for this one comes back with no BR
+        # certification at all — it's an unreleased film with nothing
+        # classified yet. Blank is the honest answer, same as what the
+        # organizer catalog search would show for it today.
         description=(
             "Heróis icônicos de três universos diferentes são colocados em rota de "
             "colisão mortal e enfrentam uma ameaça que nenhum deles pode deter sozinho."
@@ -147,6 +152,7 @@ EXTRA_REAL_EVENTS = [
         title="Divertida Mente 2",
         source_provider=Event.SourceProvider.TMDB,
         source_id="1022789",
+        age_rating=Event.AgeRating.FREE,
         description=(
             "\"Divertida Mente 2\" retorna à mente da adolescente Riley, que agora "
             "precisa lidar com novas emoções chegando bem na hora em que menos espera."
@@ -164,6 +170,7 @@ EXTRA_REAL_EVENTS = [
         title="Coringa: Delírio a Dois",
         source_provider=Event.SourceProvider.TMDB,
         source_id="889737",
+        age_rating=Event.AgeRating.SIXTEEN,
         description=(
             "Arthur Fleck está institucionalizado em Arkham à espera do julgamento por "
             "seus crimes como Coringa, enquanto vive um novo romance e a música nunca "
@@ -182,6 +189,7 @@ EXTRA_REAL_EVENTS = [
         title="Batman",
         source_provider=Event.SourceProvider.TMDB,
         source_id="414906",
+        age_rating=Event.AgeRating.FOURTEEN,
         description=(
             "Em seu segundo ano de combate ao crime, Batman descobre corrupção em "
             "Gotham City que se conecta à sua própria família, enquanto enfrenta um "
@@ -268,6 +276,7 @@ class Command(BaseCommand):
                 ),
                 image_url="https://image.tmdb.org/t/p/w500/8LJJjLjAzAwXS40S5mx79PJ2jSs.jpg",
                 category=Event.Category.MOVIE,
+                age_rating=Event.AgeRating.FOURTEEN,
                 venue_name="Cinemark Shopping Central",
                 address="Rua das Artes, 500",
                 city="Rio de Janeiro",

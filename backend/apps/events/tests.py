@@ -189,6 +189,20 @@ class TestOrganizerCreatesEvents:
         # starts as a draft, even if "published" was sent at creation time.
         assert response.data["status"] == "draft"
 
+    def test_organizer_can_set_age_rating_on_creation(self, api_client, organizer):
+        api_client.force_authenticate(user=organizer)
+        response = api_client.post(
+            "/api/events/",
+            {
+                "title": "Filme com classificação", "category": "movie", "venue_name": "Cine",
+                "city": "SP", "date_time": (timezone.now() + timedelta(days=10)).isoformat(),
+                "capacity": 50, "price": "30.00", "age_rating": "14",
+            },
+            format="json",
+        )
+        assert response.status_code == 201, response.data
+        assert response.data["age_rating"] == "14"
+
     def test_customer_cannot_create_event(self, api_client, customer):
         api_client.force_authenticate(user=customer)
         response = api_client.post(
@@ -306,6 +320,14 @@ class TestEventOwnership:
         )
         assert response.status_code == 400
         assert "capacity" in response.data
+
+    def test_published_event_rejects_age_rating_change(self, api_client, organizer, published_event):
+        api_client.force_authenticate(user=organizer)
+        response = api_client.patch(
+            f"/api/events/{published_event.id}", {"age_rating": "18"}, format="json"
+        )
+        assert response.status_code == 400
+        assert "age_rating" in response.data
 
     def test_published_event_accepts_date_and_location_changes_together(
         self, api_client, organizer, published_event

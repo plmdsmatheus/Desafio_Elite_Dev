@@ -3,6 +3,7 @@ import { ArrowRight, Search } from "lucide-react"
 import { Link } from "react-router-dom"
 import { listEvents } from "@/api/events"
 import { EventCarousel } from "@/components/event-carousel"
+import { HeroBackdrop } from "@/components/hero-backdrop"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -23,19 +24,22 @@ export function HomePage() {
 
   return (
     <div className="flex flex-col gap-12">
-      <section className="flex flex-col items-center gap-5 py-10 text-center sm:py-16">
-        <h1 className="max-w-2xl text-4xl font-bold text-balance sm:text-5xl">
-          Seu próximo show ou sessão está <span className="text-primary">aqui</span>.
-        </h1>
-        <p className="max-w-xl text-muted-foreground sm:text-lg">
-          Shows e sessões de filme com ingresso digital, QR na hora e validação rápida na entrada.
-        </p>
-        <Button asChild size="lg" className="mt-2">
-          <Link to="/eventos">
-            <Search className="size-4" />
-            Ver todos os eventos
-          </Link>
-        </Button>
+      <section className="relative -mx-4 overflow-hidden border-b sm:mx-0 sm:rounded-2xl sm:border">
+        <HeroBackdrop events={data?.results ?? []} />
+        <div className="relative z-10 flex flex-col items-center gap-5 px-4 py-20 text-center sm:py-28">
+          <h1 className="max-w-2xl text-4xl font-bold text-balance sm:text-5xl">
+            Seu próximo show ou sessão está <span className="text-primary">aqui</span>.
+          </h1>
+          <p className="max-w-xl text-muted-foreground sm:text-lg">
+            Shows e sessões de filme com ingresso digital, QR na hora e validação rápida na entrada.
+          </p>
+          <Button asChild size="lg" className="mt-2">
+            <Link to="/eventos">
+              <Search className="size-4" />
+              Ver todos os eventos
+            </Link>
+          </Button>
+        </div>
       </section>
 
       <section className="flex flex-col gap-4">

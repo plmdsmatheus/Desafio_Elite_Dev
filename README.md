@@ -11,8 +11,8 @@ Desenvolvido para o **Desafio Elite Dev** (Verzel).
 
 | | |
 |---|---|
-| **Frontend** | https://desafio-elite-hdzigpf6i-matheus-8e8c.vercel.app/ |
-| **Backend (API)** | https://desafio-elite-dev-6u2i.onrender.com/api |
+| **Frontend** | https://desafio-elite-dev-nine.vercel.app/ |
+| **Backend (API)** | https://desafio-elite-dev-6u2i.onrender.com/api/health |
 | **Documentação da API** (Swagger) | https://desafio-elite-dev-6u2i.onrender.com/api/docs |
 
 > O backend está no free tier do Render, ele **dorme depois de ~15 min sem tráfego**. A
@@ -140,7 +140,7 @@ npm run dev
 
 ## Dados de teste (seed)
 
-`seed_demo_data` já deixa tudo pronto pra explorar sem montar nada do zero — senha
+`seed_demo_data` já deixa tudo pronto pra explorar sem montar nada do zero, senha
 `demo1234` pra todo mundo:
 
 | Papel | E-mail |
@@ -248,11 +248,12 @@ CHECKPOINTS.md   # log detalhado de todo o processo de desenvolvimento
   — fora do escopo pedido no desafio.
 - **Transferência de ingresso** existe (cliente pra cliente, gratuita, só muda o dono). Isso é
   diferente de "revenda entre usuários" (que envolveria cobrança e não foi implementada, também fora do escopo pedido).
-- **Sem cache no proxy do catálogo externo** (Redis foi cogitado, ficou de fora — decisão
+- **Sem cache no proxy do catálogo externo** (Redis foi cogitado, ficou de fora, decisão
   consciente de manter a infra simples, ver `CHECKPOINTS.md`). Cada busca do organizador no
   Ticketmaster/TMDb chama a API real na hora; sujeito a rate limit dela em uso intenso.
 - **Render free tier dorme após inatividade** e o **Postgres do Supabase free pausa depois de
   ~1 semana sem tráfego**.
+- **Faixa etaria dos filmes/shows** só existem em alguns eventos pois implementei depois e os seeds ficaram dando bypass desse recurso.
 
 ## Uso de IA
 

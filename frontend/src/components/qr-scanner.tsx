@@ -58,7 +58,19 @@ export function QrScanner({ onScan }: QrScannerProps) {
     try {
       await scanner.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
+        {
+          fps: 10,
+          // A fixed 250x250 box overflows a narrow viewfinder (this container
+          // is aspect-video: below ~444px wide, the frame is under 250px
+          // tall) — html5-qrcode clamps an oversized qrbox's width but not
+          // its height, so the box spills past the bottom edge and gets
+          // sliced by this container's own overflow-hidden. Sizing it as a
+          // fraction of the real viewfinder keeps it inside the frame always.
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.7)
+            return { width: size, height: size }
+          },
+        },
         (decodedText) => {
           onScanRef.current(decodedText)
           scanner.pause(true)
