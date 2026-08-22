@@ -1926,3 +1926,17 @@ no lugar do ícone genérico `ShieldAlert` usado antes.
   certo; dropdown de Classificação no formulário do organizador com as 6 opções coloridas
   corretamente e o valor escolhido refletido no próprio trigger do select. `tsc --noEmit` e
   `oxlint` limpos.
+
+### ✅ Bugfix — cards com faixa etária ficavam mais altos que os sem
+
+A linha da faixa etária só era renderizada quando `event.age_rating` existia — cards sem
+classificação simplesmente não tinham essa linha, deixando linhas do grid com evento classificado
+visivelmente mais altas que linhas só com eventos sem classificação (o grid estica todo card de
+uma linha até o mais alto dela, mas linhas diferentes do grid não têm relação entre si).
+
+- **`event-card.tsx`**: a linha da faixa etária agora é sempre renderizada (`h-4` fixo), com o
+  selo+texto só por dentro quando existe `age_rating` — em vez de sumir a linha inteira, ela fica
+  vazia. Todo card ocupa exatamente o mesmo espaço agora, tenha ou não classificação.
+- Verificado com Playwright: alturas de todos os cards da grade lidas via `getBoundingClientRect()`
+  — todas idênticas, cards com e sem faixa etária misturados na mesma página. `tsc --noEmit` e
+  `oxlint` limpos.
