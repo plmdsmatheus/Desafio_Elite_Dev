@@ -84,7 +84,7 @@ export function CheckoutPage() {
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline">
-              <Link to="/">Voltar para a lista de eventos</Link>
+              <Link to="/eventos">Voltar para a lista de eventos</Link>
             </Button>
           </CardContent>
         </Card>

@@ -6,6 +6,7 @@ import { RegisterPage } from "@/pages/auth/RegisterPage"
 import { CheckoutPage } from "@/pages/checkout/CheckoutPage"
 import { EventDetailPage } from "@/pages/events/EventDetailPage"
 import { EventListPage } from "@/pages/events/EventListPage"
+import { HomePage } from "@/pages/events/HomePage"
 import { GatePage } from "@/pages/gate/GatePage"
 import { EventFormPage } from "@/pages/organizer/EventFormPage"
 import { OrganizerDashboardPage } from "@/pages/organizer/OrganizerDashboardPage"
@@ -23,7 +24,8 @@ function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<EventListPage />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/eventos" element={<EventListPage />} />
         <Route path="/eventos/:eventId" element={<EventDetailPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/cadastro" element={<RegisterPage />} />

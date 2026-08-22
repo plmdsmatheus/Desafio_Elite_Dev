@@ -63,7 +63,7 @@ export function EventDetailPage() {
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline">
-              <Link to="/">Voltar para a lista de eventos</Link>
+              <Link to="/eventos">Voltar para a lista de eventos</Link>
             </Button>
           </CardContent>
         </Card>
@@ -83,7 +83,7 @@ function EventDetailContent({ event, user }: { event: Event; user: User | null }
   return (
     <div className="flex flex-col gap-6 pb-24 lg:pb-0">
       <Link
-        to="/"
+        to="/eventos"
         className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4" />

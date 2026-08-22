@@ -41,7 +41,7 @@ export function MyTicketsPage() {
         <div className="flex flex-col items-center gap-3 py-12 text-center">
           <p className="text-muted-foreground">Você ainda não tem ingressos.</p>
           <Button asChild>
-            <Link to="/">Encontrar eventos</Link>
+            <Link to="/eventos">Encontrar eventos</Link>
           </Button>
         </div>
       ) : (

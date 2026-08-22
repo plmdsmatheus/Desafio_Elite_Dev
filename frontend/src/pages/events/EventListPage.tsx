@@ -2,7 +2,6 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 import { type EventListParams, listEvents } from "@/api/events"
 import { EventCard } from "@/components/event-card"
-import { EventCarousel } from "@/components/event-carousel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -133,19 +132,7 @@ export function EventListPage() {
         </p>
       ) : (
         <>
-          {page === 1 ? (
-            availableEvents.length > 0 ? (
-              <EventCarousel events={availableEvents} />
-            ) : soldOutEvents.length > 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Todos os eventos desta página estão esgotados — veja abaixo.
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Todos os eventos desta página já foram realizados — veja abaixo.
-              </p>
-            )
-          ) : availableEvents.length > 0 ? (
+          {availableEvents.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {availableEvents.map((event) => (
                 <EventCard key={event.id} event={event} />

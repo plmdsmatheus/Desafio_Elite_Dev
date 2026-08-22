@@ -1474,3 +1474,33 @@ só o primeiro chunk sem esperar tempo real nenhum passar.
 
 **Pendente**: a segunda melhoria pedida pelo usuário (separar a home em Hero/destaques + página de
 busca com filtros) fica pra depois, por pedido explícito de ir "por partes".
+
+## Checkpoint 12 — Hero page + página de busca separada
+
+Segunda melhoria da rodada anterior: a home deixa de ser a listagem com filtros direto e vira uma
+Hero page (banner + carrossel de destaques); a busca completa com filtros ganha rota própria.
+Confirmado com o usuário antes de implementar: rota `/eventos`, banner com CTA + carrossel (não só
+mover o carrossel sem contexto), e "destaque" = mesma lógica de sempre (próximos eventos
+disponíveis, sem campo novo no backend).
+
+- **`frontend/src/pages/events/HomePage.tsx`** (novo) — banner (headline + CTA "Ver todos os
+  eventos") e um carrossel reaproveitando `EventCarousel`/`EventCard` já existentes, com a mesma
+  primeira página de `/api/events/` que o carrossel antigo já usava (sem endpoint novo).
+- **`EventListPage.tsx`** não mudou de conteúdo — só de rota: era `/`, agora é `/eventos`.
+- **`App.tsx`** — `/` aponta pra `HomePage`, `/eventos` pra `EventListPage`, `/eventos/:eventId`
+  continua igual.
+- **`layout.tsx`** — nav ganhou um link "Eventos" pra `/eventos` (antes não precisava, era a home).
+- 4 links que diziam "voltar pra lista de eventos" (`MyTicketsPage`, `CheckoutPage`,
+  `EventDetailPage` ×2 — erro de evento não encontrado e o "Voltar" com seta) apontavam pra `/` e
+  foram atualizados pra `/eventos`, já que a intenção neles sempre foi "voltar a navegar/buscar",
+  não "ir pra landing page". Redirecionamentos de guarda de rota (usuário sem permissão) e o
+  destino pós-login/cadastro continuam em `/` de propósito — aterrissar na Hero depois de logar
+  faz sentido.
+- Verificado ao vivo via Playwright: Hero carrega em `/` com o carrossel de destaques; CTA e link
+  "Eventos" da nav levam pra `/eventos` com os filtros intactos; abrir um evento e clicar em
+  "Voltar" retorna pra `/eventos`, não pra Hero. `tsc --noEmit` e `oxlint` limpos, zero erros de
+  console.
+- Ajuste rápido do usuário logo depois: já que a Hero tem o carrossel, a página `/eventos` não
+  precisava repeti-lo — trocado o carrossel da primeira página por grid padrão (mesmo componente
+  já usado nas páginas seguintes e nas seções de esgotados/realizados), removendo o import de
+  `EventCarousel` desse arquivo.

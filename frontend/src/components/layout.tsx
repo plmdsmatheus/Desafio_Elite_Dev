@@ -34,6 +34,9 @@ export function Layout() {
           </NavLink>
 
           <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <NavLink to="/eventos" className={navLinkClassName}>
+              Eventos
+            </NavLink>
             {user ? (
               <>
                 <NavLink to={ROLE_LINK[user.role].to} className={navLinkClassName}>
