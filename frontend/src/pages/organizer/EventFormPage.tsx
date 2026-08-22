@@ -4,7 +4,9 @@ import { useState } from "react"
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
 import { searchCatalog } from "@/api/catalog"
 import { createEvent, type EventFormInput, getEvent, updateEvent } from "@/api/events"
+import { CancelEventDialog } from "@/components/cancel-event-dialog"
 import { EventThumbnail } from "@/components/event-thumbnail"
+import { PublishEventDialog } from "@/components/publish-event-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DateTimePicker } from "@/components/ui/datetime-picker"
@@ -23,7 +25,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api-error"
 import { toDatetimeLocalValue } from "@/lib/format"
-import type { CatalogItem, Event, EventCategory, EventSourceProvider, EventStatus } from "@/types"
+import type { CatalogItem, Event, EventCategory, EventSourceProvider } from "@/types"
 
 export function EventFormPage() {
   const { eventId } = useParams<{ eventId: string }>()
@@ -86,16 +88,12 @@ const CATEGORY_OPTIONS: { value: EventCategory; label: string }[] = [
   { value: "movie", label: "Filme" },
 ]
 
-const STATUS_OPTIONS: { value: EventStatus; label: string }[] = [
-  { value: "draft", label: "Rascunho" },
-  { value: "published", label: "Publicado" },
-  { value: "canceled", label: "Cancelado" },
-]
-
 function EventForm({ initialEvent }: { initialEvent: Event | null }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isEditMode = !!initialEvent
+  const isPublished = isEditMode && initialEvent.status === "published"
+  const isCanceled = isEditMode && initialEvent.status === "canceled"
 
   const [title, setTitle] = useState(initialEvent?.title ?? "")
   const [description, setDescription] = useState(initialEvent?.description ?? "")
@@ -109,7 +107,6 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
   )
   const [capacity, setCapacity] = useState(initialEvent ? String(initialEvent.capacity) : "")
   const [price, setPrice] = useState(initialEvent ? String(initialEvent.price) : "")
-  const [status, setStatus] = useState<EventStatus>(initialEvent?.status ?? "draft")
   const [hasSeatMap, setHasSeatMap] = useState(initialEvent?.has_seat_map ?? false)
   const [sourceProvider, setSourceProvider] = useState<EventSourceProvider>(
     initialEvent?.source_provider ?? "manual",
@@ -126,10 +123,10 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false)
   const [catalogError, setCatalogError] = useState("")
 
-  // Seats may already be sold — flipping this off/on after the fact could
-  // leave existing tickets' seat assignment inconsistent with new sales, so
-  // it's locked in place once anything has been sold.
-  const seatMapLocked = isEditMode && initialEvent.tickets_sold > 0
+  // Once published, the backend only accepts date/time and location changes
+  // (see EventWriteSerializer) — everything else, seat map included, is
+  // locked in for good at that point, not just while seats are already sold.
+  const seatMapLocked = isPublished
 
   async function handleCatalogSearch(formEvent: React.FormEvent) {
     formEvent.preventDefault()
@@ -177,7 +174,7 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
 
     setIsSubmitting(true)
 
-    const payload: EventFormInput = {
+    const fullPayload: EventFormInput = {
       source_provider: sourceProvider,
       source_id: sourceId,
       title,
@@ -190,15 +187,27 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
       date_time: new Date(dateTime).toISOString(),
       capacity: Number(capacity),
       price,
-      status,
       has_seat_map: hasSeatMap,
     }
+
+    // Once published, the backend rejects anything outside date/time and
+    // location — send exactly that subset instead of the full form. The
+    // rest of the fields are disabled in the UI already, but this keeps the
+    // request itself honest about what's actually changing.
+    const payload: Partial<EventFormInput> = isPublished
+      ? {
+          date_time: fullPayload.date_time,
+          venue_name: fullPayload.venue_name,
+          address: fullPayload.address,
+          city: fullPayload.city,
+        }
+      : fullPayload
 
     try {
       if (isEditMode) {
         await updateEvent(initialEvent.id, payload)
       } else {
-        await createEvent(payload)
+        await createEvent(fullPayload)
       }
       // Without this, the organizer panel (and the public/detail views of
       // this same event) keep showing the pre-edit cached data until a full
@@ -221,14 +230,36 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
     }
   }
 
+  // Canceled is a terminal state (see EventWriteSerializer) — nothing about
+  // this event can change anymore, so there's no form to show at all.
+  if (isCanceled) {
+    return (
+      <Card className="mx-auto w-full max-w-2xl">
+        <CardHeader>
+          <CardTitle>{initialEvent.title}</CardTitle>
+          <CardDescription>
+            Este evento foi cancelado e não pode mais ser alterado.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild variant="outline">
+            <Link to="/organizador">Voltar pros meus eventos</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold">{isEditMode ? "Editar evento" : "Criar evento"}</h1>
         <p className="text-muted-foreground">
-          {isEditMode
-            ? "Altere os dados do seu evento."
-            : "Preencha os dados do evento ou busque num catálogo externo pra preencher automaticamente."}
+          {isPublished
+            ? "Evento publicado — só dá pra alterar data/hora e local, ou cancelar o evento."
+            : isEditMode
+              ? "É um rascunho: pode alterar qualquer coisa livremente antes de publicar."
+              : "Preencha os dados do evento ou busque num catálogo externo pra preencher automaticamente. O evento nasce como rascunho — publicar é uma etapa separada."}
         </p>
       </div>
 
@@ -311,6 +342,7 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
                 <Input
                   id="title"
                   required
+                  disabled={isPublished}
                   aria-invalid={!!fieldErrors.title}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
@@ -319,7 +351,11 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>Categoria</Label>
-                <Select value={category} onValueChange={(value) => setCategory(value as EventCategory)}>
+                <Select
+                  value={category}
+                  onValueChange={(value) => setCategory(value as EventCategory)}
+                  disabled={isPublished}
+                >
                   <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
@@ -339,6 +375,7 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
               <Textarea
                 id="description"
                 rows={4}
+                disabled={isPublished}
                 aria-invalid={!!fieldErrors.description}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -356,6 +393,7 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
                     id="image_url"
                     type="url"
                     placeholder="https://..."
+                    disabled={isPublished}
                     aria-invalid={!!fieldErrors.image_url}
                     value={imageUrl}
                     onChange={(e) => setImageUrl(e.target.value)}
@@ -433,6 +471,7 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
                   type="number"
                   min={1}
                   required
+                  disabled={isPublished}
                   aria-invalid={!!fieldErrors.capacity}
                   value={capacity}
                   onChange={(e) => setCapacity(e.target.value)}
@@ -449,6 +488,7 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
                   min={0}
                   step="0.01"
                   required
+                  disabled={isPublished}
                   aria-invalid={!!fieldErrors.price}
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
@@ -462,37 +502,27 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
                 <p className="text-sm font-medium">Ingressos com assento marcado</p>
                 <p className="text-xs text-muted-foreground">
                   {seatMapLocked
-                    ? "Não dá pra mudar depois que o evento já vendeu ingressos."
+                    ? "Não dá pra mudar depois que o evento foi publicado."
                     : "Pra eventos em cinema/teatro — o cliente escolhe a poltrona em vez de só a quantidade."}
                 </p>
               </div>
               <Switch checked={hasSeatMap} onCheckedChange={setHasSeatMap} disabled={seatMapLocked} />
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <Label>Status</Label>
-              <Select value={status} onValueChange={(value) => setStatus(value as EventStatus)}>
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             {formError && <p className="text-sm text-destructive">{formError}</p>}
 
-            <div className="flex items-center gap-3 border-t pt-4">
+            <div className="flex flex-wrap items-center gap-3 border-t pt-4">
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Salvando..." : isEditMode ? "Salvar alterações" : "Criar evento"}
+                {isSubmitting
+                  ? "Salvando..."
+                  : isEditMode
+                    ? "Salvar alterações"
+                    : "Salvar rascunho"}
               </Button>
+              {isEditMode && !isPublished && <PublishEventDialog event={initialEvent} />}
+              {isPublished && <CancelEventDialog event={initialEvent} />}
               <Button asChild type="button" variant="ghost">
-                <Link to="/organizador">Cancelar</Link>
+                <Link to="/organizador">Voltar</Link>
               </Button>
             </div>
           </form>

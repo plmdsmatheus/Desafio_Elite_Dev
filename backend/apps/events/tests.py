@@ -185,6 +185,9 @@ class TestOrganizerCreatesEvents:
         assert response.status_code == 201, response.data
         assert response.data["id"] is not None
         assert response.data["tickets_available"] == 50
+        # Publishing is a deliberate, separate action — a new event always
+        # starts as a draft, even if "published" was sent at creation time.
+        assert response.data["status"] == "draft"
 
     def test_customer_cannot_create_event(self, api_client, customer):
         api_client.force_authenticate(user=customer)
@@ -219,26 +222,74 @@ class TestEventOwnership:
     def test_owner_can_edit_own_event(self, api_client, organizer, published_event):
         api_client.force_authenticate(user=organizer)
         response = api_client.patch(
-            f"/api/events/{published_event.id}", {"price": "150.00"}, format="json"
+            f"/api/events/{published_event.id}", {"venue_name": "Novo Local"}, format="json"
         )
         assert response.status_code == 200
-        assert response.data["price"] == "150.00"
+        assert response.data["venue_name"] == "Novo Local"
 
     def test_other_organizer_cannot_edit_gets_404(self, api_client, other_organizer, published_event):
         api_client.force_authenticate(user=other_organizer)
         response = api_client.patch(
-            f"/api/events/{published_event.id}", {"price": "1.00"}, format="json"
+            f"/api/events/{published_event.id}", {"venue_name": "X"}, format="json"
         )
         assert response.status_code == 404
 
     def test_customer_cannot_edit_gets_403(self, api_client, customer, published_event):
         api_client.force_authenticate(user=customer)
         response = api_client.patch(
-            f"/api/events/{published_event.id}", {"price": "1.00"}, format="json"
+            f"/api/events/{published_event.id}", {"venue_name": "X"}, format="json"
         )
         assert response.status_code == 403
 
-    def test_cannot_reduce_capacity_below_sold(self, api_client, organizer, published_event, customer):
+    def test_draft_event_accepts_edits_to_any_field(self, api_client, organizer):
+        draft = Event.objects.create(
+            organizer=organizer, title="Rascunho", category=Event.Category.SHOW,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=10),
+            capacity=10, price=Decimal("10"), status=Event.Status.DRAFT,
+        )
+        api_client.force_authenticate(user=organizer)
+        response = api_client.patch(
+            f"/api/events/{draft.id}",
+            {"title": "Novo Título", "price": "55.00", "category": "movie"},
+            format="json",
+        )
+        assert response.status_code == 200, response.data
+        assert response.data["title"] == "Novo Título"
+        assert response.data["price"] == "55.00"
+        assert response.data["category"] == "movie"
+
+    def test_draft_cannot_jump_straight_to_canceled(self, api_client, organizer):
+        draft = Event.objects.create(
+            organizer=organizer, title="Rascunho", category=Event.Category.SHOW,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=10),
+            capacity=10, price=Decimal("10"), status=Event.Status.DRAFT,
+        )
+        api_client.force_authenticate(user=organizer)
+        response = api_client.patch(
+            f"/api/events/{draft.id}", {"status": "canceled"}, format="json"
+        )
+        assert response.status_code == 400
+        assert "status" in response.data
+
+    def test_draft_can_be_published(self, api_client, organizer):
+        draft = Event.objects.create(
+            organizer=organizer, title="Rascunho", category=Event.Category.SHOW,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=10),
+            capacity=10, price=Decimal("10"), status=Event.Status.DRAFT,
+        )
+        api_client.force_authenticate(user=organizer)
+        response = api_client.patch(
+            f"/api/events/{draft.id}", {"status": "published"}, format="json"
+        )
+        assert response.status_code == 200
+        assert response.data["status"] == "published"
+
+    def test_published_event_rejects_changes_outside_date_and_location(
+        self, api_client, organizer, published_event, customer
+    ):
+        """Was previously about reducing capacity below what's sold — now
+        capacity (like every other non-location field) is locked outright
+        the moment an event is published, regardless of sales."""
         from apps.ticketing.models import Reservation, Ticket
 
         reservation = Reservation.objects.create(
@@ -255,6 +306,33 @@ class TestEventOwnership:
         )
         assert response.status_code == 400
         assert "capacity" in response.data
+
+    def test_published_event_accepts_date_and_location_changes_together(
+        self, api_client, organizer, published_event
+    ):
+        api_client.force_authenticate(user=organizer)
+        new_date = (timezone.now() + timedelta(days=60)).isoformat()
+        response = api_client.patch(
+            f"/api/events/{published_event.id}",
+            {
+                "date_time": new_date,
+                "venue_name": "Novo Local",
+                "address": "Rua Nova, 123",
+                "city": "Nova Cidade",
+            },
+            format="json",
+        )
+        assert response.status_code == 200, response.data
+        assert response.data["venue_name"] == "Novo Local"
+        assert response.data["city"] == "Nova Cidade"
+
+    def test_published_event_cannot_go_back_to_draft(self, api_client, organizer, published_event):
+        api_client.force_authenticate(user=organizer)
+        response = api_client.patch(
+            f"/api/events/{published_event.id}", {"status": "draft"}, format="json"
+        )
+        assert response.status_code == 400
+        assert "status" in response.data
 
     def test_organizer_events_list_only_shows_own(self, api_client, organizer, other_organizer, published_event):
         api_client.force_authenticate(user=other_organizer)
@@ -292,9 +370,12 @@ class TestEventOwnership:
         used_ticket.refresh_from_db()
         assert used_ticket.status == Ticket.Status.USED
 
-    def test_canceling_an_already_canceled_event_is_a_harmless_no_op(
+    def test_canceled_event_rejects_any_further_changes(
         self, api_client, organizer, published_event, customer
     ):
+        """Canceled is a terminal state — unlike the old free-form status
+        field, nothing about a canceled event can be edited afterwards, not
+        even canceling it again."""
         from apps.ticketing.models import Reservation, Ticket
 
         reservation = Reservation.objects.create(
@@ -305,13 +386,17 @@ class TestEventOwnership:
 
         api_client.force_authenticate(user=organizer)
         api_client.patch(f"/api/events/{published_event.id}", {"status": "canceled"}, format="json")
-        # Customer transfers is blocked on a canceled ticket — simulate someone
-        # else's ticket staying VALID some other way isn't possible here, so
-        # just confirm a second cancel-save doesn't error and stays canceled.
+
         response = api_client.patch(
-            f"/api/events/{published_event.id}", {"price": "1.00"}, format="json"
+            f"/api/events/{published_event.id}", {"venue_name": "Outro Local"}, format="json"
         )
-        assert response.status_code == 200
+        assert response.status_code == 400
+
+        response = api_client.patch(
+            f"/api/events/{published_event.id}", {"status": "canceled"}, format="json"
+        )
+        assert response.status_code == 400
+
         ticket.refresh_from_db()
         assert ticket.status == Ticket.Status.CANCELED
 

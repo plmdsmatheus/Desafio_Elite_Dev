@@ -1694,3 +1694,49 @@ ver o resto. Rodei `npx shadcn add tooltip` — o `Tooltip` do Radix já vinha d
 - Verificado ao vivo via Playwright: capacidade "150" e preço "99.90" sem nenhuma seta nativa;
   hover no local truncado de um card mostra o tooltip com o texto completo
   ("Cinemark Shopping Iguatemi, São Paulo"). `tsc --noEmit` e `oxlint` limpos.
+
+## Checkpoint 16 — refatoração: ciclo de vida do evento como máquina de estados
+
+Pedido do usuário: "não faz sentido criar um evento cancelado" — o `<Select>` de Status na
+criação/edição deixava escolher qualquer status livremente, sem nenhuma trava. Planejado em modo
+de planejamento (mudança de arquitetura de verdade, backend + frontend). Novo fluxo: todo evento
+nasce **rascunho** (tudo editável); publicar é uma **ação confirmada** separada; publicado só
+aceita **cancelar** ou **alterar data/hora e local**; cancelado é terminal. "Realizado" continua
+sendo só o `effective_status` computado de sempre, sem mudança.
+
+- **Backend** (`apps/events/serializers.py`, `EventWriteSerializer.validate`): a máquina de
+  estados vira a fonte da verdade, não só a UI. Criar sempre força `status=draft`, não importa o
+  que o cliente mande. Publicado rejeita qualquer campo fora de
+  `date_time`/`venue_name`/`address`/`city`/`status` (e `status` só pode ir pra `canceled`, nunca
+  voltar pra `draft`). Cancelado rejeita qualquer PATCH, ponto. Removida a checagem antiga de
+  `capacity < tickets_sold` — virou código morto (publicado já barra `capacity` de qualquer jeito,
+  e rascunho nunca tem `tickets_sold > 0`, já que pagamento exige evento publicado).
+  - Efeito colateral bom: `has_seat_map`, que só era travado na UI (checando `tickets_sold > 0`,
+    sem nada no backend), passa a ser travado de verdade assim que o evento é publicado — fechava
+    uma lacuna real onde uma chamada direta à API podia mudar o tipo de assento de um evento já
+    vendendo ingresso.
+  - 5 testes novos + 3 reescritos em `apps/events/tests.py` cobrindo cada transição (rascunho
+    aceita tudo, não pula pra cancelado; publicado aceita só data/local, não despublica; cancelado
+    rejeita qualquer PATCH, mesmo cancelar de novo). Suíte do backend: 115 testes.
+- **Frontend** (`EventFormPage.tsx`): `<Select>` de Status removido por completo.
+  - Criação: formulário de sempre, sem campo de status — botão vira "Salvar rascunho".
+  - Edição de rascunho: formulário completo, mais um botão novo **"Publicar evento"**
+    (`publish-event-dialog.tsx`, mesmo padrão de diálogo de confirmação já usado em
+    `cancel-ticket-dialog.tsx`) — PATCH mínimo, não manda o formulário inteiro.
+  - Edição de publicado: só Data/hora, Local, Cidade e Endereço ficam editáveis — o resto
+    (`disabled`, não escondido, pra manter contexto) — mais um botão novo destrutivo
+    **"Cancelar evento"** (`cancel-event-dialog.tsx`).
+  - Edição de cancelado: nenhum formulário — um card só-leitura ("Este evento foi cancelado e não
+    pode mais ser alterado"), mesmo padrão visual do card de "evento não encontrado" já usado
+    nessa página.
+  - O botão "Cancelar" que só navegava de volta (sem cancelar nada) virou **"Voltar"** — evitava
+    colidir com o "Cancelar evento" novo, que faz algo bem diferente.
+  - `api/events.ts`: `updateEvent` passa a aceitar `Partial<EventFormInput>`; `EventFormInput`
+    perdeu o campo `status` (não é mais algo que o formulário define diretamente); duas funções
+    novas e minúsculas, `publishEvent`/`cancelEvent`, cada uma um PATCH de um campo só.
+- Verificado ao vivo via Playwright, o fluxo inteiro numa passada só: criar (sem campo de status,
+  botão "Salvar rascunho") → editar o rascunho (tudo habilitado) → publicar pelo diálogo → reabrir
+  a edição (Título/Categoria/Descrição/Capacidade/Preço/assento desabilitados, Local/Cidade/
+  Endereço/Data continuam editáveis) → cancelar pelo diálogo → reabrir a edição (card só-leitura,
+  nenhum campo de formulário). Zero erros de console em qualquer etapa. `tsc --noEmit` e `oxlint`
+  limpos.

@@ -1,6 +1,10 @@
 import { apiClient } from "@/api/client"
-import type { Event, EventCategory, EventSourceProvider, EventStatus, Paginated, Seat } from "@/types"
+import type { Event, EventCategory, EventSourceProvider, Paginated, Seat } from "@/types"
 
+// No `status` here on purpose: creation always lands as a draft (the backend
+// forces it regardless of what's sent), and publishing/canceling afterwards
+// are their own deliberate actions (see publishEvent/cancelEvent below), not
+// a value this form ever picks directly.
 export interface EventFormInput {
   source_provider: EventSourceProvider
   source_id: string
@@ -14,7 +18,6 @@ export interface EventFormInput {
   date_time: string
   capacity: number
   price: string
-  status: EventStatus
   has_seat_map: boolean
 }
 
@@ -56,6 +59,14 @@ export function createEvent(input: EventFormInput) {
   return apiClient.post<Event>("/events/", input).then((res) => res.data)
 }
 
-export function updateEvent(eventId: string | number, input: EventFormInput) {
+export function updateEvent(eventId: string | number, input: Partial<EventFormInput>) {
   return apiClient.patch<Event>(`/events/${eventId}`, input).then((res) => res.data)
+}
+
+export function publishEvent(eventId: string | number) {
+  return apiClient.patch<Event>(`/events/${eventId}`, { status: "published" }).then((res) => res.data)
+}
+
+export function cancelEvent(eventId: string | number) {
+  return apiClient.patch<Event>(`/events/${eventId}`, { status: "canceled" }).then((res) => res.data)
 }
