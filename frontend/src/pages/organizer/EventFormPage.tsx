@@ -7,6 +7,7 @@ import { createEvent, type EventFormInput, getEvent, updateEvent } from "@/api/e
 import { EventThumbnail } from "@/components/event-thumbnail"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { DateTimePicker } from "@/components/ui/datetime-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -165,6 +166,15 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
     formEvent.preventDefault()
     setFieldErrors({})
     setFormError("")
+
+    // The picker replaced a native `<input required>`, which used to block
+    // submission by itself — `new Date(dateTime)` below would otherwise
+    // throw on an empty string instead of showing a normal field error.
+    if (!dateTime) {
+      setFieldErrors({ date_time: "Selecione a data e hora do evento." })
+      return
+    }
+
     setIsSubmitting(true)
 
     const payload: EventFormInput = {
@@ -406,13 +416,11 @@ function EventForm({ initialEvent }: { initialEvent: Event | null }) {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="date_time">Data e hora</Label>
-                <Input
+                <DateTimePicker
                   id="date_time"
-                  type="datetime-local"
-                  required
                   aria-invalid={!!fieldErrors.date_time}
                   value={dateTime}
-                  onChange={(e) => setDateTime(e.target.value)}
+                  onChange={setDateTime}
                 />
                 {fieldErrors.date_time && (
                   <p className="text-xs text-destructive">{fieldErrors.date_time}</p>

@@ -3,6 +3,7 @@ import { useState } from "react"
 import { type EventListParams, listEvents } from "@/api/events"
 import { EventCard } from "@/components/event-card"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -100,15 +101,14 @@ export function EventListPage() {
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
+        <div className="flex w-44 flex-col gap-1.5">
           <label htmlFor="date" className="text-sm font-medium">
             Data
           </label>
-          <Input
+          <DatePicker
             id="date"
-            type="date"
             value={draft.date}
-            onChange={(e) => setDraft((d) => ({ ...d, date: e.target.value }))}
+            onChange={(date) => setDraft((d) => ({ ...d, date }))}
           />
         </div>
 

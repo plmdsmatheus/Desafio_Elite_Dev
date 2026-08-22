@@ -1548,3 +1548,71 @@ card) e o `-translate-y-0.5` do hover eram cortados numa linha reta bem na borda
   ficou local, só onde os cards de evento são usados dentro de um carrossel.
 - Verificado ao vivo via Playwright: hover na borda de cima, de baixo e nos cantos do carrossel da
   Hero — brilho completo e redondo nas quatro bordas, sem corte. `tsc --noEmit` e `oxlint` limpos.
+
+## Checkpoint 13 — date picker do shadcn + bug de posicionamento dos dropdowns
+
+Três pedidos do usuário na mesma rodada:
+
+### ✅ Melhoria — `<input type="date">` nativo virou date picker do shadcn
+
+O filtro "Data" da busca de eventos usava o date picker nativo do navegador (cada um com uma cara
+diferente). Rodei `npx shadcn add calendar popover`, que trouxe `react-day-picker` e `date-fns`
+como dependências novas e gerou `calendar.tsx`/`popover.tsx` no estilo do projeto. Criei
+`frontend/src/components/ui/date-picker.tsx` — um `Popover` + `Calendar` que troca strings
+`"YYYY-MM-DD"` (mesmo formato que o input nativo já produzia, então `EventListPage.tsx` não
+precisou mudar como lê/envia o filtro), com o calendário localizado em português
+(`date-fns/locale`'s `ptBR`, senão vinha em inglês por padrão).
+
+- **Bloqueio real durante a implementação**: o frontend roda num container Docker com
+  `node_modules` isolado do host (mesma limitação já documentada com o `html5-qrcode`, ver
+  checkpoint anterior de portaria). `npx shadcn add` rodou no host e atualizou `package.json`
+  corretamente, mas o Vite dentro do container não via os pacotes novos — pior ainda, como
+  `App.tsx` importa todas as páginas de forma eager, o import quebrado em cascata derrubou o app
+  inteiro (nem `/login` renderizava). Precisei pedir pro usuário rodar
+  `docker compose exec frontend npm install` **e depois** `docker compose restart frontend` — só
+  o install não bastou, porque o Vite faz o pre-bundling das dependências na subida do processo,
+  não vendo pacotes instalados depois que ele já estava de pé.
+- Verificado ao vivo via Playwright depois do restart: calendário abre, navega entre meses, seleciona
+  uma data, mostra "5 de agosto de 2026" no botão, e o filtro manda `?date=2026-08-22` pro backend
+  — mesmo formato de sempre. `tsc --noEmit` e `oxlint` limpos.
+
+### ✅ Bugfix — dropdowns (`Select`) com posicionamento/tamanho quebrados
+
+Dois sintomas relatados, mesma causa: o filtro de categoria e os selects de categoria/status na
+criação/edição de evento "invadiam" campos vizinhos, e reabrir um select depois de escolher um
+valor mais abaixo na lista abria com itens espalhados acima/abaixo em vez de sempre do topo.
+
+- **Causa raiz**: `SelectContent` (`frontend/src/components/ui/select.tsx`) tinha
+  `position = "item-aligned"` como padrão — o modo do Radix que alinha o menu com o **item
+  selecionado**, não com o campo, imitando um `<select>` nativo. Isso explica os dois sintomas de
+  uma vez: a lista abre a partir de onde o item selecionado está (não do topo), e a largura do menu
+  não é sincronizada com a do campo (só o modo `"popper"` faz isso), então um trigger estreito
+  (`w-32`) podia abrir um menu deslocado o bastante pra encostar no campo do lado.
+- **Correção**: trocado o padrão pra `position = "popper"` — abre sempre logo abaixo/acima do
+  campo, itens do topo pra baixo, largura sincronizada com o trigger. Mudança de uma linha no
+  componente compartilhado, sem precisar tocar nos dois lugares que usam `Select`
+  (`EventListPage.tsx`, `EventFormPage.tsx`).
+- Verificado ao vivo via Playwright: no formulário de evento, selecionei o último item da lista de
+  Status, fechei e reabri — o menu abre exatamente colado no campo (mesmo `x`/largura do trigger),
+  não mais espalhado pela tela. `tsc --noEmit` e `oxlint` limpos.
+
+### ✅ Melhoria — faltou o campo "Data e hora" da criação/edição de evento
+
+O fix anterior só cobriu o filtro de busca (data pura); o formulário de criar/editar evento
+(`EventFormPage.tsx`) ainda usava `<input type="datetime-local">` nativo pro campo "Data e hora".
+Como esse campo precisa de data **e** hora (não só data), o `DatePicker` já existente não servia —
+criei `frontend/src/components/ui/datetime-picker.tsx`: mesmo `Calendar`+`Popover`, com um
+`<input type="time">` nativo dentro do popover pra hora (não existe primitivo de "seletor de hora"
+no shadcn — um input nativo ali dentro é o padrão deles pra isso). Continua trocando o mesmo
+formato de string `"YYYY-MM-DDTHH:mm"` que o input nativo já produzia.
+
+- **Detalhe que exigiu atenção**: `handleSubmit` fazia `new Date(dateTime).toISOString()` direto,
+  sem checar se `dateTime` estava vazio — isso só era seguro porque o `required` do input nativo
+  impedia o form de submeter vazio. Sem o input nativo, um `Date` inválido faria essa linha
+  estourar uma exceção não tratada. Adicionei uma checagem explícita no início do
+  `handleSubmit` (`if (!dateTime) { setFieldErrors(...); return }`), usando o mesmo mecanismo de
+  erro de campo que o resto do formulário já usa.
+- Verificado ao vivo via Playwright: abri o formulário de criar evento, escolhi uma data no
+  calendário, defini a hora, o botão mostrou "10 de agosto de 2026 às 20:30", e o submit completo
+  (preenchendo os outros campos obrigatórios) gerou o payload `date_time` correto e navegou de
+  volta pro painel sem erro. `tsc --noEmit` e `oxlint` limpos.
