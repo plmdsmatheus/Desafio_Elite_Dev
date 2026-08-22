@@ -1419,3 +1419,58 @@ já aconteceu.
 - Verificado ao vivo via Playwright: criei um evento publicado com data no passado e capacidade
   livre (nunca esgotou) — apareceu na seção "Realizados", sem contagem de ingressos, sem estar
   dentro de um `<a>`, e clicar nele não navega pra lugar nenhum. Evento de teste removido depois.
+
+## Checkpoint 11 — disponibilidade em tempo real via SSE
+
+Pedido do usuário: contagem de ingressos disponíveis em tempo real (Server-Sent Events) na etapa
+de Revisão do checkout, num layout de 2 colunas (revisão à esquerda, contagem ao vivo à direita)
+pra eventos por quantidade; e trocar o polling do mapa de assentos por SSE também. Planejado em
+modo de planejamento antes de implementar, dado o tamanho da mudança.
+
+### Achado na exploração: gunicorn de 1 worker travaria a API inteira
+
+O `Dockerfile` rodava gunicorn sem `--workers`/`--threads` (1 worker sync, default). Uma conexão
+SSE fica presa num loop `while True: sleep()` dentro desse worker — com só 1, ela bloquearia *toda*
+a API pra *todo mundo* enquanto estivesse aberta. Corrigido trocando o CMD pra
+`--worker-class gthread --workers 2 --threads 4` (built-in do gunicorn, sem dependência nova).
+Localmente o `docker-compose.yml` já roda via `runserver`, que é multi-threaded por padrão — nada
+mudou aí.
+
+### Design: SSE como transporte, poll-and-diff por baixo
+
+Sem Celery/Channels/Redis neste projeto (mesma filosofia de sempre — "computado na leitura, zero
+infra de jobs"). O SSE aqui (`apps/ticketing/sse.py`, `stream_while_changed`) é um generator que
+relê o Postgres a cada ~2s e só emite `data:` quando o payload muda — o polling não desaparece, só
+migra do cliente pro servidor e vira push. Uma linha `: heartbeat` a cada ~15s mantém a conexão
+viva atrás de proxies que fecham conexões ociosas (relevante pro Render em produção). O primeiro
+payload é emitido **antes** do primeiro `sleep()` — de propósito, pra dar pra testar a view lendo
+só o primeiro chunk sem esperar tempo real nenhum passar.
+
+- **Backend**: duas views novas em `apps/ticketing/views.py` — `EventAvailabilityStreamView`
+  (`GET /events/:id/availability/stream`, snapshot `{tickets_available, tickets_sold, capacity}`)
+  e `EventSeatMapStreamView` (`GET /events/:id/seats/stream`, mesmo formato do
+  `EventSeatMapView` de sempre, só que via generator). Mesma permissão (`IsCustomer`) do que já
+  existia. 8 testes novos em `test_sse.py` — todos instantâneos (nenhum espera segundo real,
+  graças ao "yield antes do sleep"). Suíte do backend: 108 testes (+8).
+- **Frontend**: `lib/sse.ts` (`subscribeSSE`) usa `fetch` em vez de `EventSource` nativo — o
+  `EventSource` do browser não manda headers customizados, e a autenticação da app é JWT via
+  header, sem cookies. Reconecta sozinho se a conexão cair. `hooks/use-sse.ts` embrulha isso num
+  hook, com o callback lido por ref (mesmo padrão do `onScanRef` do `QrScanner`) pra não reabrir a
+  conexão a cada render.
+  - `SeatMapPicker`: trocou `refetchInterval` por SSE, empurrando cada mensagem direto pro cache
+    do React Query (`queryClient.setQueryData(["event-seats", eventId], ...)`) — mesma chave que
+    `CheckoutPage.tsx` já invalidava em dois lugares (assento expirado, "Desistir"), então esses
+    dois pontos não precisaram mudar nada.
+  - `LiveAvailability` (novo componente): painel da coluna direita, só pra eventos sem mapa de
+    assentos — com mapa, a disponibilidade já é visual (cor de cada cadeira), então não ganhou um
+    contador redundante (decisão confirmada com o usuário antes de implementar).
+  - `CheckoutPage.tsx`: etapa de Revisão vira grid de 2 colunas só quando `!event.has_seat_map`;
+    mapa de assentos e as etapas de Pagamento/Confirmação continuam exatamente como antes.
+- Verificado ao vivo (dois "compradores" via Playwright + fetch, sem dar refresh na aba aberta):
+  cliente A na Revisão de um evento por quantidade via a contagem cair de 80 pra 77 assim que o
+  cliente B comprou 3 ingressos por fora; e um assento virar indisponível na tela de A assim que o
+  cliente B segurou aquele mesmo assento — nos dois casos sem nenhuma ação na aba do cliente A.
+  Zero erros de console. Tickets de teste cancelados depois pra não sujar o dataset de demo.
+
+**Pendente**: a segunda melhoria pedida pelo usuário (separar a home em Hero/destaques + página de
+busca com filtros) fica pra depois, por pedido explícito de ir "por partes".

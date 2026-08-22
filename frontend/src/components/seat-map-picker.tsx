@@ -1,14 +1,10 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Armchair } from "lucide-react"
 import { getEventSeats } from "@/api/events"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useSSE } from "@/hooks/use-sse"
 import { cn } from "@/lib/utils"
-
-// Polling, not WebSockets: a few seconds of staleness in what the customer
-// SEES is fine, because the actual guarantee against double-booking is the
-// select_for_update lock in the backend's hold_seats, not this read — see
-// apps.ticketing.seating.
-const POLL_INTERVAL_MS = 4000
+import type { Seat } from "@/types"
 
 interface SeatMapPickerProps {
   eventId: number
@@ -17,10 +13,20 @@ interface SeatMapPickerProps {
 }
 
 export function SeatMapPicker({ eventId, selectedSeatIds, onToggleSeat }: SeatMapPickerProps) {
+  const queryClient = useQueryClient()
+
+  // One-shot fetch for the first paint; live updates after that come from
+  // SSE (see below), not from refetching this query — the actual guarantee
+  // against double-booking is the select_for_update lock in the backend's
+  // hold_seats, not this read, so the transport for this display is free to
+  // be either polling or push. See apps.ticketing.sse for the streaming side.
   const { data: seats, isLoading } = useQuery({
     queryKey: ["event-seats", eventId],
     queryFn: () => getEventSeats(eventId),
-    refetchInterval: POLL_INTERVAL_MS,
+  })
+
+  useSSE<Seat[]>(`/events/${eventId}/seats/stream`, (nextSeats) => {
+    queryClient.setQueryData(["event-seats", eventId], nextSeats)
   })
 
   if (isLoading || !seats) {

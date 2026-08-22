@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom"
 import { getEvent } from "@/api/events"
 import { createReservation, payReservation, releaseReservation } from "@/api/reservations"
+import { LiveAvailability } from "@/components/live-availability"
 import { QuantityStepper } from "@/components/quantity-stepper"
 import { SeatMapPicker } from "@/components/seat-map-picker"
 import { Button } from "@/components/ui/button"
@@ -279,62 +280,80 @@ function CheckoutFlow({ event, initialQuantity }: { event: Event; initialQuantit
       <StepIndicator current={step} />
 
       {step === "quantity" && (
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Revisar reserva</CardTitle>
-            <CardDescription>{event.title}</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
-              <p className="flex items-center gap-2">
-                <Calendar className="size-4 shrink-0" />
-                {formatDateTime(event.date_time)}
-              </p>
-              <p className="flex items-center gap-2">
-                <MapPin className="size-4 shrink-0" />
-                {event.venue_name}, {event.city}
-              </p>
-            </div>
-
-            {event.has_seat_map ? (
-              <div className="flex flex-col gap-2 border-t pt-4">
-                <span className="text-sm font-medium">
-                  Escolha seus assentos ({selectedSeatIds.length}/{maxQuantity})
-                </span>
-                <SeatMapPicker
-                  eventId={event.id}
-                  selectedSeatIds={selectedSeatIds}
-                  onToggleSeat={handleToggleSeat}
-                />
+        <div
+          className={cn(
+            "grid w-full gap-4",
+            event.has_seat_map ? "max-w-md" : "max-w-3xl lg:grid-cols-[1fr_320px]",
+          )}
+        >
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle>Revisar reserva</CardTitle>
+              <CardDescription>{event.title}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+                <p className="flex items-center gap-2">
+                  <Calendar className="size-4 shrink-0" />
+                  {formatDateTime(event.date_time)}
+                </p>
+                <p className="flex items-center gap-2">
+                  <MapPin className="size-4 shrink-0" />
+                  {event.venue_name}, {event.city}
+                </p>
               </div>
-            ) : (
-              <div className="flex items-center justify-between border-t pt-4">
-                <span className="text-sm font-medium">Quantidade</span>
-                <QuantityStepper value={quantity} max={maxQuantity} onChange={setQuantity} />
+
+              {event.has_seat_map ? (
+                <div className="flex flex-col gap-2 border-t pt-4">
+                  <span className="text-sm font-medium">
+                    Escolha seus assentos ({selectedSeatIds.length}/{maxQuantity})
+                  </span>
+                  <SeatMapPicker
+                    eventId={event.id}
+                    selectedSeatIds={selectedSeatIds}
+                    onToggleSeat={handleToggleSeat}
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center justify-between border-t pt-4">
+                  <span className="text-sm font-medium">Quantidade</span>
+                  <QuantityStepper value={quantity} max={maxQuantity} onChange={setQuantity} />
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>Preço unitário</span>
+                <span>{formatCurrency(event.price)}</span>
               </div>
-            )}
 
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Preço unitário</span>
-              <span>{formatCurrency(event.price)}</span>
-            </div>
+              <div className="flex items-center justify-between border-t pt-3 text-lg font-semibold">
+                <span>Total</span>
+                <span className="text-primary">{formatCurrency(total)}</span>
+              </div>
 
-            <div className="flex items-center justify-between border-t pt-3 text-lg font-semibold">
-              <span>Total</span>
-              <span className="text-primary">{formatCurrency(total)}</span>
-            </div>
+              {reservationError && <p className="text-sm text-destructive">{reservationError}</p>}
 
-            {reservationError && <p className="text-sm text-destructive">{reservationError}</p>}
+              <Button
+                onClick={handleConfirmReservation}
+                disabled={isReserving || effectiveQuantity === 0}
+                className="w-full"
+              >
+                {isReserving ? "Reservando..." : "Confirmar reserva"}
+              </Button>
+            </CardContent>
+          </Card>
 
-            <Button
-              onClick={handleConfirmReservation}
-              disabled={isReserving || effectiveQuantity === 0}
-              className="w-full"
-            >
-              {isReserving ? "Reservando..." : "Confirmar reserva"}
-            </Button>
-          </CardContent>
-        </Card>
+          {!event.has_seat_map && (
+            <LiveAvailability
+              eventId={event.id}
+              initial={{
+                tickets_available: event.tickets_available,
+                tickets_sold: event.tickets_sold,
+                capacity: event.capacity,
+              }}
+            />
+          )}
+        </div>
       )}
 
       {step === "payment" && (

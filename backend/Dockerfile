@@ -25,4 +25,11 @@ EXPOSE 8000
 # back to 8000 for a Render-style host that injects it, or a manual run without
 # one. Local Docker Compose dev overrides this entirely (see docker-compose.yml)
 # to get autoreload + DEBUG instead.
-CMD ["sh", "-c", "python manage.py migrate && python manage.py seed_demo_data && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000}"]
+#
+# --worker-class gthread --workers 2 --threads 4: plain sync gunicorn (the
+# default, 1 worker) would let a single open SSE connection (see
+# apps.ticketing.sse) block every other request on the whole process for as
+# long as it stayed open. Threaded workers let each process serve several
+# requests concurrently — a stream sitting in its poll loop no longer starves
+# everyone else. gthread ships with gunicorn itself, no extra dependency.
+CMD ["sh", "-c", "python manage.py migrate && python manage.py seed_demo_data && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --worker-class gthread --workers 2 --threads 4"]
