@@ -24,13 +24,18 @@ export interface EventListParams {
   category?: EventCategory | ""
   date?: string
   page?: number
+  show_unavailable?: boolean
 }
 
 export function listEvents(params: EventListParams) {
   const cleanParams = Object.fromEntries(
-    Object.entries(params).filter(([, value]) => value !== "" && value != null),
+    Object.entries(params).filter(([, value]) => value !== "" && value != null && value !== false),
   )
   return apiClient.get<Paginated<Event>>("/events/", { params: cleanParams }).then((res) => res.data)
+}
+
+export function getEventCities() {
+  return apiClient.get<string[]>("/events/cities").then((res) => res.data)
 }
 
 export function getEvent(eventId: string | number) {

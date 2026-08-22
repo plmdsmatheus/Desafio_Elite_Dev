@@ -4,6 +4,7 @@ import { Link } from "react-router-dom"
 import { EventThumbnail } from "@/components/event-thumbnail"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   AVAILABILITY_TEXT_CLASS,
   type AvailabilityLevel,
@@ -94,9 +95,16 @@ export function EventCard({ event }: { event: Event }) {
       <CardContent className="flex flex-1 flex-col gap-1.5 pb-4 text-sm text-muted-foreground">
         <p className="flex items-center gap-1.5">
           <MapPin className="size-3.5 shrink-0" />
-          <span className="line-clamp-1">
-            {event.venue_name}, {event.city}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="line-clamp-1 text-left">
+                {event.venue_name}, {event.city}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {event.venue_name}, {event.city}
+            </TooltipContent>
+          </Tooltip>
         </p>
         <p className="flex items-center gap-1.5">
           <Calendar className="size-3.5 shrink-0" />

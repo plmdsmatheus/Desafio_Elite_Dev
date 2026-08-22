@@ -12,12 +12,12 @@ class TestPublicListing:
     def test_only_published_events_are_public(self, api_client, organizer):
         Event.objects.create(
             organizer=organizer, title="Publicado", category=Event.Category.SHOW,
-            venue_name="V", city="SP", date_time=timezone.now(), capacity=10,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=1), capacity=10,
             price=Decimal("10"), status=Event.Status.PUBLISHED,
         )
         Event.objects.create(
             organizer=organizer, title="Rascunho", category=Event.Category.SHOW,
-            venue_name="V", city="SP", date_time=timezone.now(), capacity=10,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=1), capacity=10,
             price=Decimal("10"), status=Event.Status.DRAFT,
         )
 
@@ -62,7 +62,7 @@ class TestPublicListing:
             capacity=10, price=Decimal("10"), status=Event.Status.PUBLISHED,
         )
 
-        response = api_client.get("/api/events/")
+        response = api_client.get("/api/events/", {"show_unavailable": "true"})
         assert response.status_code == 200
         first_page_titles = [e["title"] for e in response.data["results"]]
         assert available.title in first_page_titles
@@ -89,10 +89,79 @@ class TestPublicListing:
         )
         Ticket.objects.create(reservation=reservation, event=sold_out, owner=customer)
 
-        response = api_client.get("/api/events/")
+        response = api_client.get("/api/events/", {"show_unavailable": "true"})
         assert response.status_code == 200
         titles = [e["title"] for e in response.data["results"]]
         assert titles.index(sold_out.title) < titles.index(completed.title)
+
+    def test_show_unavailable_defaults_to_excluding_sold_out_and_completed(
+        self, api_client, organizer, customer
+    ):
+        """The other side of the two tests above: by default (no
+        show_unavailable param), sold-out and completed events shouldn't
+        show up in the results at all — not just sorted last."""
+        from apps.ticketing.models import Reservation, Ticket
+
+        available = Event.objects.create(
+            organizer=organizer, title="Disponível", category=Event.Category.SHOW,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=1),
+            capacity=10, price=Decimal("10"), status=Event.Status.PUBLISHED,
+        )
+        sold_out = Event.objects.create(
+            organizer=organizer, title="Esgotado", category=Event.Category.SHOW,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=1),
+            capacity=1, price=Decimal("10"), status=Event.Status.PUBLISHED,
+        )
+        reservation = Reservation.objects.create(
+            event=sold_out, customer=customer, quantity=1,
+            total_price=Decimal("10"), status=Reservation.Status.PAID,
+        )
+        Ticket.objects.create(reservation=reservation, event=sold_out, owner=customer)
+        completed = Event.objects.create(
+            organizer=organizer, title="Realizado", category=Event.Category.SHOW,
+            venue_name="V", city="SP", date_time=timezone.now() - timedelta(days=1),
+            capacity=10, price=Decimal("10"), status=Event.Status.PUBLISHED,
+        )
+
+        response = api_client.get("/api/events/")
+        assert response.status_code == 200
+        titles = [e["title"] for e in response.data["results"]]
+        assert titles == [available.title]
+        assert response.data["count"] == 1
+
+        response = api_client.get("/api/events/", {"show_unavailable": "true"})
+        titles = {e["title"] for e in response.data["results"]}
+        assert titles == {available.title, sold_out.title, completed.title}
+        assert response.data["count"] == 3
+
+
+@pytest.mark.django_db
+class TestEventCities:
+    def test_returns_distinct_sorted_cities_from_published_events_only(self, api_client, organizer):
+        Event.objects.create(
+            organizer=organizer, title="A", category=Event.Category.SHOW,
+            venue_name="V", city="São Paulo", date_time=timezone.now(), capacity=10,
+            price=Decimal("10"), status=Event.Status.PUBLISHED,
+        )
+        Event.objects.create(
+            organizer=organizer, title="B", category=Event.Category.SHOW,
+            venue_name="V", city="São Paulo", date_time=timezone.now(), capacity=10,
+            price=Decimal("10"), status=Event.Status.PUBLISHED,
+        )
+        Event.objects.create(
+            organizer=organizer, title="C", category=Event.Category.SHOW,
+            venue_name="V", city="Belo Horizonte", date_time=timezone.now(), capacity=10,
+            price=Decimal("10"), status=Event.Status.PUBLISHED,
+        )
+        Event.objects.create(
+            organizer=organizer, title="Rascunho", category=Event.Category.SHOW,
+            venue_name="V", city="Curitiba", date_time=timezone.now(), capacity=10,
+            price=Decimal("10"), status=Event.Status.DRAFT,
+        )
+
+        response = api_client.get("/api/events/cities")
+        assert response.status_code == 200
+        assert response.data == ["Belo Horizonte", "São Paulo"]
 
 
 @pytest.mark.django_db

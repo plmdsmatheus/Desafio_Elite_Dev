@@ -1616,3 +1616,81 @@ formato de string `"YYYY-MM-DDTHH:mm"` que o input nativo já produzia.
   calendário, defini a hora, o botão mostrou "10 de agosto de 2026 às 20:30", e o submit completo
   (preenchendo os outros campos obrigatórios) gerou o payload `date_time` correto e navegou de
   volta pro painel sem erro. `tsc --noEmit` e `oxlint` limpos.
+
+## Checkpoint 14 — filtros instantâneos, combobox de cidade, esgotados/realizados opcionais
+
+Três melhorias na tela `/eventos`, planejadas em modo de planejamento antes de implementar (mudança
+multi-arquivo, com endpoint novo e um padrão de UI — combobox — inédito no projeto).
+
+### ✅ Filtros instantâneos
+
+Trocado o `draft`/`filters`/botão "Buscar" por states individuais direto na query, com
+`useDebouncedValue` (novo hook genérico, `hooks/use-debounced-value.ts`) nos dois campos de texto
+(Buscar, Cidade — 400ms) — os seletores (Categoria, Data, o novo switch) aplicam na hora, sem
+debounce, por serem eventos discretos. `<form onSubmit>` virou `<div>` (não há mais ação de
+submit). Verificado ao vivo: digitar "Wicked" rápido (delay de 50ms por tecla) gera **1 única**
+requisição à API, não uma por tecla.
+
+### ✅ Combobox de cidade (sem dependência nova)
+
+Endpoint novo `GET /api/events/cities` (`apps/events/views.py`, `EventCityListView`) — cidades
+distintas de eventos publicados, sem paginação. Frontend: `components/city-combobox.tsx`, um
+`Input` de texto livre + `Popover`/`PopoverAnchor` (não o `Command`/cmdk do shadcn — evita mais uma
+rodada de `npm install` + restart do container, como aconteceu com o date picker) mostrando até 8
+sugestões filtradas em memória; digitar sem clicar em nada continua funcionando como filtro (o
+valor do campo **é** o filtro, nunca fica preso a uma seleção da lista).
+
+- **Bug real encontrado e corrigido no processo**: o popover abria e fechava sozinho na mesma
+  interação — `onOpenChange` disparava com `false` bem na hora de focar o campo. Rastreei até o
+  `DismissableLayer` do Radix: `PopoverTrigger` tem uma exclusão especial embutida pra ignorar o
+  elemento que abriu o popover na checagem de "foco saiu pra fora"; `PopoverAnchor` (usado aqui
+  porque o padrão é "abre ao focar um input", não "abre ao clicar um botão") **não** tem essa
+  exclusão — o próprio evento de foco que abre o popover era lido como foco saindo pra fora dele,
+  fechando de novo na mesma hora. Corrigido com `onFocusOutside` no `PopoverContent`, ignorando
+  explicitamente quando o alvo é o próprio input (comparado por `ref`).
+- **Bug secundário pego no caminho**: `components/ui/input.tsx` não usava `React.forwardRef` —
+  qualquer composição `asChild` (Radix) que precisasse medir a posição do `Input` via ref
+  quebraria silenciosamente. Corrigido de forma genérica (não só pro combobox), já que `Input`
+  pode aparecer como `asChild` em qualquer lugar do app.
+- Verificado ao vivo: abrir o combobox mostra as cidades reais vindas do banco; clicar numa
+  aplica o filtro (`?city=Belo+Horizonte`); digitar uma cidade que não existe continua filtrando
+  como texto livre (mostra o estado vazio corretamente, sem travar em nenhuma sugestão).
+
+### ✅ Esgotados/realizados viram filtro opcional (`show_unavailable`)
+
+`EventListCreateView.get_queryset` ganhou um `.exclude()` (mesma condição que o `sort_rank` já
+usava pra ordenar) quando `show_unavailable` está ausente ou diferente de `"true"` — por padrão,
+a listagem só mostra o que dá pra comprar agora. Feito no backend, não só no cliente, pra manter a
+contagem/paginação (`count`/`next`/`previous`) consistente com o que a tela realmente mostra.
+Switch novo na tela ("Mostrar esgotados/realizados") liga isso. A lógica de renderizar as seções
+Esgotados/Realizados não mudou nada — com o filtro desligado o backend já não devolve esses
+eventos, então os arrays computados no cliente ficam vazios sozinhos e as seções somem.
+
+- 2 testes de regressão novos em `apps/events/tests.py` (`show_unavailable` exclui/inclui
+  corretamente; 2 testes existentes de ordenação precisaram passar `show_unavailable=true`
+  explicitamente, já que agora dependem dele pra ver os eventos que estão testando ordenar) + 1
+  teste pro endpoint `/events/cities`. Suíte do backend: 110 testes (+3, líquido).
+- Verificado ao vivo: por padrão 11 de 14 eventos aparecem (só disponíveis); ligar o switch traz
+  a contagem pra 14.
+
+## Checkpoint 15 — spinners de campo numérico e tooltip no local truncado
+
+### ✅ Melhoria — removidos os spinners nativos de `<input type="number">`
+
+Capacidade e Preço (`EventFormPage.tsx`) usam `type="number"`, que traz as setinhas de
+cima/baixo do navegador — fora do padrão visual do resto do app. Removidas globalmente em
+`index.css` (`@layer base`, regra de `-webkit-appearance`/`-moz-appearance`), não só nesses dois
+campos — qualquer input numérico futuro já nasce sem elas.
+
+### ✅ Melhoria — tooltip no local truncado do card de evento
+
+O local (`venue_name, city`) no `EventCard` já usava `line-clamp-1`, cortando o texto sem jeito de
+ver o resto. Rodei `npx shadcn add tooltip` — o `Tooltip` do Radix já vinha dentro do pacote
+`radix-ui` já instalado (mesmo já usado por `Select`/`Popover`/`Dialog`), então não precisou de
+`npm install` nem restart do container dessa vez. Adicionei `TooltipProvider` em `main.tsx`
+(precisa envolver a árvore uma vez só) e troquei o `<span>` truncado do card por
+`Tooltip`/`TooltipTrigger`/`TooltipContent`, mostrando o local completo ao passar o mouse.
+
+- Verificado ao vivo via Playwright: capacidade "150" e preço "99.90" sem nenhuma seta nativa;
+  hover no local truncado de um card mostra o tooltip com o texto completo
+  ("Cinemark Shopping Iguatemi, São Paulo"). `tsc --noEmit` e `oxlint` limpos.
