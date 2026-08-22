@@ -1504,3 +1504,47 @@ disponíveis, sem campo novo no backend).
   precisava repeti-lo — trocado o carrossel da primeira página por grid padrão (mesmo componente
   já usado nas páginas seguintes e nas seções de esgotados/realizados), removendo o import de
   `EventCarousel` desse arquivo.
+
+### ✅ Bugfix — tilt do card "achatava" a extremidade oposta ao mouse
+
+Reportado pelo usuário: passar o mouse numa borda do card fazia a borda **oposta** ficar reta, sem
+tilt nenhum — em vez do tilt 3D simétrico esperado.
+
+- **Causa raiz**: `handleMouseMove` chamava `event.currentTarget.getBoundingClientRect()` a cada
+  movimento do mouse — mas o elemento já carregava o `transform: perspective()/rotateX()/rotateY()`
+  do frame anterior nesse momento. `getBoundingClientRect()` num elemento com rotação 3D retorna a
+  caixa delimitadora *já projetada/achatada* pela perspectiva, não a caixa original do layout. Essa
+  caixa distorcida realimentava o cálculo do próximo tilt — dependente da ordem em que o mouse
+  passava pelos lados, exatamente o sintoma relatado.
+- **Correção** (`frontend/src/components/event-card.tsx`): a medição passou a acontecer só uma vez,
+  no `onMouseEnter` (momento em que o transform está garantidamente neutro, já que `onMouseLeave`
+  sempre zera o tilt), guardada em `useRef`. `handleMouseMove` usa essa caixa cacheada em vez de
+  remedir a cada movimento.
+
+### ✅ Melhoria — brilho que seguia o mouse virou borda lima ao redor do card
+
+Pedido do usuário: trocar o "brilho" (gradiente radial que seguia o cursor, com `mix-blend-mode:
+screen`) por uma borda lima ao redor do card no hover. Removido o estado `glare` e a div do
+gradiente inteiros; o `Card` (que já tinha `ring-1 ring-foreground/10` como borda padrão) ganhou
+`hover:ring-2 hover:ring-primary` mais um glow suave (`hover:shadow-[0_0_20px_-2px_var(--brand-accent)]`)
+— puro CSS via `:hover`, sem posição de mouse envolvida, então essa parte não tinha como herdar o
+mesmo tipo de bug do tilt.
+
+- Verificado ao vivo via Playwright, reproduzindo a sequência exata do bug relatado (hover na borda
+  esquerda, depois na direita, depois no canto): tilt agora simétrico dos dois lados, borda lima
+  visível e suave no hover, sem o brilho antigo. `tsc --noEmit` e `oxlint` limpos.
+
+### ✅ Bugfix — mesmo sintoma no carrossel da Hero, causa diferente
+
+O usuário reportou o mesmo "borda reta/cortada" no carrossel da Hero page depois do fix acima —
+mas ali a causa era outra: o `CarouselContent` do shadcn/ui tem um `overflow-hidden` fixo no seu
+próprio wrapper (necessário pra esconder os slides fora da viewport), e os cards ficavam
+encostados nessa borda sem respiro nenhum — o brilho lima novo (que estoura ~20px pra fora do
+card) e o `-translate-y-0.5` do hover eram cortados numa linha reta bem na borda do carrossel.
+
+- **Correção** (`frontend/src/components/event-carousel.tsx`): `py-4` no `CarouselContent` — dá
+  espaço vertical suficiente pro glow/lift renderizarem completos antes de qualquer coisa ser
+  clipada. Não mexi no componente `carousel.tsx` em si (é um primitivo shadcn genérico); o ajuste
+  ficou local, só onde os cards de evento são usados dentro de um carrossel.
+- Verificado ao vivo via Playwright: hover na borda de cima, de baixo e nos cantos do carrossel da
+  Hero — brilho completo e redondo nas quatro bordas, sem corte. `tsc --noEmit` e `oxlint` limpos.

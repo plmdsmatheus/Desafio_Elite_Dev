@@ -1,5 +1,5 @@
 import { Calendar, MapPin } from "lucide-react"
-import { type MouseEvent, useState } from "react"
+import { type MouseEvent, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { EventThumbnail } from "@/components/event-thumbnail"
 import { Badge } from "@/components/ui/badge"
@@ -34,26 +34,39 @@ export function EventCard({ event }: { event: Event }) {
   const completed = event.effective_status === "completed"
   const level = getAvailabilityLevel(event.tickets_available, event.capacity)
   const [tilt, setTilt] = useState({ x: 0, y: 0 })
-  const [glare, setGlare] = useState({ x: 50, y: 50, opacity: 0 })
+
+  // Captured once on enter, not re-measured on every mousemove: by the time
+  // a move handler fires, the element already carries the transform from the
+  // previous frame, so getBoundingClientRect() on it mid-hover returns the
+  // rotated (foreshortened) box instead of the flat layout one — feeding a
+  // skewed rect back into the tilt math, which is what made one edge read as
+  // flat while tilting from the opposite side. Measuring only on enter (when
+  // the transform is guaranteed neutral, since leave always resets it) keeps
+  // the whole gesture working off one consistent, untransformed rect.
+  const rectRef = useRef<DOMRect | null>(null)
+
+  function handleMouseEnter(event: MouseEvent<HTMLAnchorElement>) {
+    rectRef.current = event.currentTarget.getBoundingClientRect()
+  }
 
   function handleMouseMove(event: MouseEvent<HTMLAnchorElement>) {
-    const rect = event.currentTarget.getBoundingClientRect()
+    const rect = rectRef.current ?? event.currentTarget.getBoundingClientRect()
     const px = (event.clientX - rect.left) / rect.width
     const py = (event.clientY - rect.top) / rect.height
     setTilt({ x: (0.5 - py) * MAX_TILT_DEG * 2, y: (px - 0.5) * MAX_TILT_DEG * 2 })
-    setGlare({ x: px * 100, y: py * 100, opacity: 1 })
   }
 
   function handleMouseLeave() {
     setTilt({ x: 0, y: 0 })
-    setGlare((g) => ({ ...g, opacity: 0 }))
+    rectRef.current = null
   }
 
   const card = (
     <Card
       className={cn(
         "h-full overflow-hidden py-0 transition-all",
-        !completed && "hover:-translate-y-0.5 hover:shadow-lg",
+        !completed &&
+          "hover:-translate-y-0.5 hover:ring-2 hover:ring-primary hover:shadow-[0_0_20px_-2px_var(--brand-accent)]",
       )}
     >
       <div className="relative h-36 overflow-hidden sm:h-40">
@@ -66,17 +79,6 @@ export function EventCard({ event }: { event: Event }) {
             !completed && "group-hover:scale-105",
           )}
         />
-        {/* Smoky lime reflection that follows the cursor across the image. */}
-        {!completed && (
-          <div
-            className="pointer-events-none absolute inset-0 transition-opacity duration-300"
-            style={{
-              opacity: glare.opacity * 0.5,
-              background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, var(--brand-accent), transparent 60%)`,
-              mixBlendMode: "screen",
-            }}
-          />
-        )}
       </div>
 
       <div className="px-4 pt-3">
@@ -129,6 +131,7 @@ export function EventCard({ event }: { event: Event }) {
     <Link
       to={`/eventos/${event.id}`}
       className="group block"
+      onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       style={{
