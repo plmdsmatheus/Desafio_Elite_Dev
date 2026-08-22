@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Case, IntegerField, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -238,11 +239,26 @@ class EventSeatMapView(generics.ListAPIView):
 
 @extend_schema_view(get=extend_schema(tags=["tickets"], summary="Meus ingressos"))
 class MyTicketsView(generics.ListAPIView):
+    """Valid tickets sort first (then used, then canceled) so a still-usable
+    ticket never gets buried on page 2 behind older canceled/used ones — the
+    page size doesn't know about status, so status has to drive the order."""
+
     permission_classes = [IsCustomer]
     serializer_class = TicketSerializer
 
     def get_queryset(self):
-        return Ticket.objects.filter(owner=self.request.user).select_related("event")
+        status_rank = Case(
+            When(status=Ticket.Status.VALID, then=Value(0)),
+            When(status=Ticket.Status.USED, then=Value(1)),
+            default=Value(2),
+            output_field=IntegerField(),
+        )
+        return (
+            Ticket.objects.filter(owner=self.request.user)
+            .select_related("event")
+            .annotate(_status_rank=status_rank)
+            .order_by("_status_rank", "-created_at")
+        )
 
 
 class TicketCancelView(APIView):

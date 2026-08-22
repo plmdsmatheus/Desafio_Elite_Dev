@@ -1335,3 +1335,29 @@ dava `psycopg2.errors.UniqueViolation: duplicate key value violates unique const
 - Testado via `pytest` (97/97) e, depois que o backend local voltou, também ao vivo via
   Playwright: comprar 3 assentos, cancelar os 3, comprar os mesmos 3 de novo com outra conta —
   pagamento aprovado sem erro, sem 500 no log do Django.
+
+### ✅ Bugfix — item ainda disponível "sumindo" na segunda página (ingressos e eventos)
+
+Reportado pelo usuário: comprar 7 ingressos e cancelar 6 fazia o único ingresso ainda válido cair
+pra segunda página (tamanho de página fixo em 6); o mesmo acontecia com 7 eventos onde 6 estavam
+esgotados — o evento ainda disponível podia ficar na página 2. Causa: a ordenação das duas listas
+não levava status/disponibilidade em conta, só `-created_at` (ingressos) ou `date_time`
+(eventos) — então itens "mortos" (cancelado/usado/esgotado) podiam ocupar as primeiras vagas da
+página 1 só por serem mais antigos ou terem data mais próxima.
+
+- **`MyTicketsView`** (`apps/ticketing/views.py`): anota um rank de status (válido=0, usado=1,
+  cancelado=2) e ordena por `(_status_rank, -created_at)` — ingressos válidos sempre vêm
+  primeiro, o resto mantém a ordem por data de compra dentro do próprio grupo.
+- **`EventListCreateView`** (`apps/events/views.py`, listagem pública `/api/events/`): anota se o
+  evento está esgotado (`_sold_count >= capacity`) e ordena por `(_sold_out_rank, date_time)` —
+  eventos com ingresso disponível sempre vêm antes dos esgotados, `date_time` como critério dentro
+  de cada grupo. `OrganizerEventListView` (painel do organizador) não foi alterada — lá o
+  organizador já vê todos os status de propósito, não é uma vitrine de compra.
+- 2 testes de regressão novos: `test_valid_ticket_isnt_buried_on_page_2_by_older_canceled_ones`
+  (`test_cancel.py`) e `test_sold_out_events_dont_bury_an_available_one_on_page_2` (`events/tests.py`),
+  reproduzindo os dois cenários exatos relatados. Suíte do backend: 99 testes (+2).
+- Verificado ao vivo via Playwright: comprar 7 ingressos, cancelar 6 pela API, abrir "Meus
+  ingressos" no navegador — o ingresso válido aparece na página 1, os 5 cancelados cabem junto,
+  o 6º cancelado estoura pra página 2 (botão "Próxima" habilitado). O caso de eventos esgotados
+  fica coberto pelo teste automatizado (não reproduzido manualmente, exigiria esgotar 6 eventos
+  via UI só pra visualização — o teste já bate direto no Postgres real).

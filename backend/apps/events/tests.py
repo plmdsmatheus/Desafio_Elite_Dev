@@ -36,6 +36,64 @@ class TestPublicListing:
         response = api_client.get("/api/events/", {"q": "não existe"})
         assert response.data["results"] == []
 
+    def test_sold_out_events_dont_bury_an_available_one_on_page_2(self, api_client, organizer, customer):
+        """Reported in practice: 7 published events, 6 already sold out — with
+        a fixed page size (6) and date_time as the only ordering, the one
+        event still worth buying could land on page 2 depending on its date.
+        Sold-out events must sort after available ones so the buyable event
+        is always on page 1."""
+        from apps.ticketing.models import Reservation, Ticket
+
+        for i in range(6):
+            sold_out = Event.objects.create(
+                organizer=organizer, title=f"Esgotado {i}", category=Event.Category.SHOW,
+                venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=i),
+                capacity=1, price=Decimal("10"), status=Event.Status.PUBLISHED,
+            )
+            reservation = Reservation.objects.create(
+                event=sold_out, customer=customer, quantity=1,
+                total_price=Decimal("10"), status=Reservation.Status.PAID,
+            )
+            Ticket.objects.create(reservation=reservation, event=sold_out, owner=customer)
+
+        available = Event.objects.create(
+            organizer=organizer, title="Ainda Disponível", category=Event.Category.SHOW,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=100),
+            capacity=10, price=Decimal("10"), status=Event.Status.PUBLISHED,
+        )
+
+        response = api_client.get("/api/events/")
+        assert response.status_code == 200
+        first_page_titles = [e["title"] for e in response.data["results"]]
+        assert available.title in first_page_titles
+
+    def test_completed_events_sort_after_sold_out_ones(self, api_client, organizer, customer):
+        """Reported in practice: past ("realizado") events showing up mixed in
+        with upcoming ones confused buyers. They must rank last — below even
+        sold-out-but-still-upcoming events — regardless of date_time."""
+        completed = Event.objects.create(
+            organizer=organizer, title="Já Aconteceu", category=Event.Category.SHOW,
+            venue_name="V", city="SP", date_time=timezone.now() - timedelta(days=1),
+            capacity=10, price=Decimal("10"), status=Event.Status.PUBLISHED,
+        )
+        sold_out = Event.objects.create(
+            organizer=organizer, title="Esgotado Mas Futuro", category=Event.Category.SHOW,
+            venue_name="V", city="SP", date_time=timezone.now() + timedelta(days=1),
+            capacity=1, price=Decimal("10"), status=Event.Status.PUBLISHED,
+        )
+        from apps.ticketing.models import Reservation, Ticket
+
+        reservation = Reservation.objects.create(
+            event=sold_out, customer=customer, quantity=1,
+            total_price=Decimal("10"), status=Reservation.Status.PAID,
+        )
+        Ticket.objects.create(reservation=reservation, event=sold_out, owner=customer)
+
+        response = api_client.get("/api/events/")
+        assert response.status_code == 200
+        titles = [e["title"] for e in response.data["results"]]
+        assert titles.index(sold_out.title) < titles.index(completed.title)
+
 
 @pytest.mark.django_db
 class TestOrganizerCreatesEvents:
