@@ -1,4 +1,5 @@
-from django.db.models import Q
+from django.db.models import Case, F, IntegerField, Q, Value, When
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import generics, permissions, status
@@ -58,7 +59,22 @@ class EventListCreateView(generics.ListCreateAPIView):
             if parsed:
                 qs = qs.filter(date_time__date=parsed)
 
-        return qs
+        # Buyable events sort first, then sold-out ones, then events that
+        # already happened ("realizado" — see Event.effective_status) —
+        # otherwise a handful of them (older/earlier date_time) can bury a
+        # still-buyable event on page 2 of a fixed-size page, and a past event
+        # showing up alongside upcoming ones just confuses the buyer. A
+        # completed event ranks last even if it technically never sold out.
+        # with_sold_counts() already order_by("date_time"); this re-order
+        # layers the rank on top, keeping date_time as the tiebreaker within
+        # each group.
+        sort_rank = Case(
+            When(date_time__lte=timezone.now(), then=Value(2)),
+            When(_sold_count__gte=F("capacity"), then=Value(1)),
+            default=Value(0),
+            output_field=IntegerField(),
+        )
+        return qs.annotate(_sort_rank=sort_rank).order_by("_sort_rank", "date_time")
 
     def perform_create(self, serializer):
         event = serializer.save(organizer=self.request.user)

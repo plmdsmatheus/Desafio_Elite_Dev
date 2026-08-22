@@ -84,6 +84,28 @@ class TestTicketCancel:
         response = api_client.post(f"/api/tickets/{ticket_id}/cancel")
         assert response.status_code == 409
 
+    def test_valid_ticket_isnt_buried_on_page_2_by_older_canceled_ones(
+        self, api_client, customer, published_event
+    ):
+        """Reported in practice: buy 7 tickets, cancel 6 — with a fixed page
+        size (6) and only -created_at as ordering, the one still-valid ticket
+        can land on page 2 since it isn't necessarily the newest of the 7.
+        Valid tickets must sort before used/canceled ones."""
+        published_event.capacity = 7
+        published_event.save()
+
+        ticket_ids = [self._issue_ticket(api_client, customer, published_event) for _ in range(7)]
+        for ticket_id in ticket_ids[:6]:
+            response = api_client.post(f"/api/tickets/{ticket_id}/cancel")
+            assert response.status_code == 200, response.data
+
+        response = api_client.get("/api/tickets/mine")
+        assert response.status_code == 200
+        first_page_ids = [t["id"] for t in response.data["results"]]
+        assert ticket_ids[6] in first_page_ids
+        assert response.data["results"][0]["id"] == ticket_ids[6]
+        assert response.data["results"][0]["status"] == "valid"
+
     def test_a_canceled_ticket_frees_the_spot_for_a_new_purchase(
         self, api_client, customer, customer2, published_event
     ):
