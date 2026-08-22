@@ -45,8 +45,10 @@ export function EventListPage() {
   }
 
   const hasActiveFilters = Object.values(filters).some(Boolean)
-  const availableEvents = data ? data.results.filter((event) => event.tickets_available > 0) : []
-  const soldOutEvents = data ? data.results.filter((event) => event.tickets_available === 0) : []
+  const upcomingEvents = data ? data.results.filter((event) => event.effective_status !== "completed") : []
+  const completedEvents = data ? data.results.filter((event) => event.effective_status === "completed") : []
+  const availableEvents = upcomingEvents.filter((event) => event.tickets_available > 0)
+  const soldOutEvents = upcomingEvents.filter((event) => event.tickets_available === 0)
 
   return (
     <div className="flex flex-col gap-6">
@@ -134,9 +136,13 @@ export function EventListPage() {
           {page === 1 ? (
             availableEvents.length > 0 ? (
               <EventCarousel events={availableEvents} />
-            ) : (
+            ) : soldOutEvents.length > 0 ? (
               <p className="text-sm text-muted-foreground">
                 Todos os eventos desta página estão esgotados — veja abaixo.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Todos os eventos desta página já foram realizados — veja abaixo.
               </p>
             )
           ) : availableEvents.length > 0 ? (
@@ -145,9 +151,13 @@ export function EventListPage() {
                 <EventCard key={event.id} event={event} />
               ))}
             </div>
-          ) : (
+          ) : soldOutEvents.length > 0 ? (
             <p className="text-sm text-muted-foreground">
               Nenhum ingresso disponível nesta página — veja os esgotados abaixo.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Todos os eventos desta página já foram realizados — veja abaixo.
             </p>
           )}
 
@@ -158,6 +168,19 @@ export function EventListPage() {
               </h2>
               <div className="grid grid-cols-2 gap-3 opacity-60 sm:grid-cols-3 lg:grid-cols-4">
                 {soldOutEvents.map((event) => (
+                  <EventCard key={event.id} event={event} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {completedEvents.length > 0 && (
+            <div className="flex flex-col gap-3 border-t pt-6">
+              <h2 className="text-sm font-medium text-muted-foreground">
+                Realizados ({completedEvents.length})
+              </h2>
+              <div className="grid grid-cols-2 gap-3 opacity-60 sm:grid-cols-3 lg:grid-cols-4">
+                {completedEvents.map((event) => (
                   <EventCard key={event.id} event={event} />
                 ))}
               </div>

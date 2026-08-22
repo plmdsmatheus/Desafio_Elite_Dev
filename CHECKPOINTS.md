@@ -273,7 +273,7 @@ telas/features reais, auth context de verdade e identidade visual própria ficam
 - Não consegui testar o `docker compose up` do frontend dentro deste sandbox (mesma limitação de
   `docker` ausente já registrada nos checkpoints anteriores) — precisa de validação do usuário.
 
-## ⬜ Checkpoint 9 — Telas do frontend
+## ✅ Checkpoint 9 — Telas do frontend
 
 Dividido a pedido do usuário: uma tela por vez, com pausa pra personalização entre cada uma. Ordem
 combinada: **fundação** (auth) → login/cadastro → lista de eventos → detalhe do evento →
@@ -1348,16 +1348,74 @@ página 1 só por serem mais antigos ou terem data mais próxima.
 - **`MyTicketsView`** (`apps/ticketing/views.py`): anota um rank de status (válido=0, usado=1,
   cancelado=2) e ordena por `(_status_rank, -created_at)` — ingressos válidos sempre vêm
   primeiro, o resto mantém a ordem por data de compra dentro do próprio grupo.
-- **`EventListCreateView`** (`apps/events/views.py`, listagem pública `/api/events/`): anota se o
-  evento está esgotado (`_sold_count >= capacity`) e ordena por `(_sold_out_rank, date_time)` —
-  eventos com ingresso disponível sempre vêm antes dos esgotados, `date_time` como critério dentro
-  de cada grupo. `OrganizerEventListView` (painel do organizador) não foi alterada — lá o
-  organizador já vê todos os status de propósito, não é uma vitrine de compra.
-- 2 testes de regressão novos: `test_valid_ticket_isnt_buried_on_page_2_by_older_canceled_ones`
-  (`test_cancel.py`) e `test_sold_out_events_dont_bury_an_available_one_on_page_2` (`events/tests.py`),
-  reproduzindo os dois cenários exatos relatados. Suíte do backend: 99 testes (+2).
+- **`EventListCreateView`** (`apps/events/views.py`, listagem pública `/api/events/`): anota um
+  rank de 3 níveis por evento — disponível=0, esgotado=1, **realizado=2** (evento já passou da
+  data — ver `Event.effective_status`) — e ordena por `(_sort_rank, date_time)`. Depois do
+  primeiro relato (só esgotado x disponível), o usuário pediu numa segunda rodada que eventos
+  "realizados" também não se misturassem com os disponíveis/esgotados — ficam por último, mesmo
+  que por algum motivo não estejam com o ingresso esgotado. `OrganizerEventListView` (painel do
+  organizador) não foi alterada — lá o organizador já vê todos os status de propósito, não é uma
+  vitrine de compra.
+- 3 testes de regressão novos: `test_valid_ticket_isnt_buried_on_page_2_by_older_canceled_ones`
+  (`test_cancel.py`), `test_sold_out_events_dont_bury_an_available_one_on_page_2` e
+  `test_completed_events_sort_after_sold_out_ones` (`events/tests.py`), reproduzindo os cenários
+  exatos relatados. Suíte do backend: 100 testes (+3).
 - Verificado ao vivo via Playwright: comprar 7 ingressos, cancelar 6 pela API, abrir "Meus
   ingressos" no navegador — o ingresso válido aparece na página 1, os 5 cancelados cabem junto,
-  o 6º cancelado estoura pra página 2 (botão "Próxima" habilitado). O caso de eventos esgotados
-  fica coberto pelo teste automatizado (não reproduzido manualmente, exigiria esgotar 6 eventos
-  via UI só pra visualização — o teste já bate direto no Postgres real).
+  o 6º cancelado estoura pra página 2 (botão "Próxima" habilitado). Os casos de eventos
+  esgotados/realizados ficam cobertos pelos testes automatizados (não reproduzidos manualmente —
+  exigiria esgotar/esperar 6+ eventos via UI só pra visualização — os testes já batem direto no
+  Postgres real).
+
+### ✅ Bugfix — leitor de QR da portaria "sem permissão de câmera" (não era bug de permissão)
+
+Reportado pelo usuário depois de testar em vários computadores e celulares, inclusive pedindo pra
+outras pessoas testarem: a câmera nunca aparecia pra ler o QR code, "como se o site não tivesse
+permissão pra usar a câmera". Reproduzi a sessão de portaria ao vivo contra o próprio backend de
+produção (Render + Supabase), com Playwright simulando uma câmera real — a causa raiz não era
+permissão nem HTTPS (o deploy já é seguro): era puramente de UX.
+
+- **Causa raiz**: o componente usava `Html5QrcodeScanner`, o widget de alto nível da lib
+  `html5-qrcode`, que renderiza sua própria UI pronta — incluindo um botão sem nenhum estilo,
+  em inglês, com o texto **"Request Camera Permissions"**. Sem cor de fundo, sem parecer
+  clicável, do lado de uma interface toda em português: qualquer pessoa não-técnica lê aquilo como
+  uma mensagem de erro ("não tem permissão"), não como um botão que precisa ser clicado pra a
+  câmera realmente ligar. Confirmei isso reproduzindo a tela de portaria em produção — o texto
+  aparece exatamente como relatado, e clicar nele (o que ninguém tentou) liga a câmera
+  perfeitamente.
+- **Correção** (`frontend/src/components/qr-scanner.tsx`): reescrito para usar `Html5Qrcode`, a
+  API de baixo nível da mesma lib, montando a UI própria do projeto — um botão `shadcn` de
+  verdade, em português ("Ativar câmera" / "Solicitando acesso..." / "Parar câmera"), com mensagem
+  de erro em português quando a permissão é negada de fato.
+- **Bug secundário pego durante a própria correção**: a primeira versão escondia o container do
+  vídeo com `display:none` enquanto a câmera estava desativada. `Html5Qrcode.start()` mede o
+  tamanho do container no exato momento da chamada — como o container tinha `display:none`
+  (0×0) nesse instante, o vídeo começava a transmitir de verdade (stream ativo, sem erro), só que
+  renderizado em 0×0 pra sempre, invisível. Corrigido dando ao container um tamanho fixo
+  (`aspect-video`) sempre presente, com o estado "ativar câmera"/erro sobreposto por cima
+  (`absolute inset-0`) em vez de substituir o container — assim ele nunca é medido com tamanho
+  zero.
+- Verificado ao vivo com Playwright + câmera simulada (`--use-fake-device-for-media-stream`):
+  confirmei que o vídeo realmente renderiza com dimensões reais (não mais 0×0), que trocar de
+  evento com a câmera ligada limpa a stream sem erro no console, e que reativar a câmera num
+  segundo evento funciona sem "câmera já em uso". `tsc --noEmit` e `oxlint` limpos.
+
+### ✅ Melhoria — eventos realizados não devem parecer "à venda"
+
+Pedido do usuário depois do fix de ordenação: um evento "realizado" que nunca chegou a esgotar
+ainda aparecia com a contagem de "N disponíveis" e, sendo um `EventCard` normal, continuava
+levando pra página de detalhe do evento — como se ainda desse pra comprar ingresso pra algo que
+já aconteceu.
+
+- **`EventCard`** (`frontend/src/components/event-card.tsx`): quando `event.effective_status ===
+  "completed"`, o card renderiza sem o link de detalhe (`<Link>` vira um `<div>` inerte, sem
+  tilt/glare/hover — nenhum efeito que sugira que dá pra clicar) e sem a badge de disponibilidade
+  de ingressos.
+- **`EventListPage`** (`frontend/src/pages/events/EventListPage.tsx`): eventos realizados agora
+  formam uma terceira seção própria — "Realizados (N)" — separada de "Esgotados", em vez de caírem
+  junto com os eventos disponíveis (bucket antigo baseado só em `tickets_available > 0`, que não
+  sabia distinguir "esgotado" de "já aconteceu"). Mensagens de página vazia também cobrem o caso
+  de uma página inteira só com eventos realizados.
+- Verificado ao vivo via Playwright: criei um evento publicado com data no passado e capacidade
+  livre (nunca esgotou) — apareceu na seção "Realizados", sem contagem de ingressos, sem estar
+  dentro de um `<a>`, e clicar nele não navega pra lugar nenhum. Evento de teste removido depois.
