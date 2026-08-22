@@ -1940,3 +1940,26 @@ uma linha até o mais alto dela, mas linhas diferentes do grid não têm relaç�
 - Verificado com Playwright: alturas de todos os cards da grade lidas via `getBoundingClientRect()`
   — todas idênticas, cards com e sem faixa etária misturados na mesma página. `tsc --noEmit` e
   `oxlint` limpos.
+
+### ✅ Melhoria — esqueleto de loading durante os filtros, em vez de troca brusca dos cards
+
+Pedido do usuário: ao digitar num filtro (nome, local, data), a troca de resultados era instantânea
+e brusca — os cards antigos ficavam na tela até o novo resultado chegar e substituir tudo de uma
+vez ("corte/piscada"), efeito colateral do `placeholderData: keepPreviousData` (evita a lista
+sumir enquanto busca, mas não evita a troca abrupta quando o resultado novo chega).
+
+- **`EventListPage.tsx`**: a grade agora usa `isFetching` (não `isLoading`, que só cobre a
+  primeira busca de todas — com dado em cache de uma busca anterior, `isLoading` já vem `false`
+  mesmo com uma nova busca em andamento) pra decidir entre mostrar o esqueleto de sempre ou os
+  cards — qualquer busca em andamento (filtro novo ou paginação) mostra o esqueleto no lugar da
+  grade, em vez de deixar o resultado antigo visível até trocar de uma vez.
+- O rodapé (contagem + botões Anterior/Próxima) foi extraído do bloco condicional e passou a
+  depender só de `data` existir (que o `keepPreviousData` garante continuar preenchido durante o
+  refetch) — assim ele não pisca junto com a grade a cada busca, só o conteúdo dos cards é trocado
+  pelo esqueleto.
+- **Verificado com Playwright**: interceptei a requisição de `/api/events/` com um atraso artificial
+  de 1.2s (rede local é rápida demais pra pegar o estado intermediário de outro jeito) e capturei
+  3 momentos digitando "Batman" no filtro — antes (grade normal com a contagem antiga), durante
+  (esqueleto de 6 cards, rodapé com a contagem antiga intacto embaixo) e depois (resultado certo,
+  "1 evento(s) encontrado(s)", sem nenhum corte perceptível na transição). `tsc --noEmit` e
+  `oxlint` limpos.
